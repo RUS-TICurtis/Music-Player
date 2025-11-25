@@ -16,26 +16,65 @@
 }
 
 body {
-    background-color: var(--light-color);
-    color: var(--dark-color);
-    overflow: hidden;
+  background-color: var(--light-color);
+  color: var(--dark-color);
+  overflow-x: hidden;   
 }
 
 .music-player-container {
-    display: flex;
-    height: 100vh;
-    width: 100vw;
+  display: flex;
+  width: 100vw;
+  height: 100vh;        
+  flex-wrap: nowrap;    
 }
 
+/* Consolidated sidebar (desktop) */
 .sidebar {
-    width: 250px;
-    background-color: white;
-    box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
-    display: flex;
-    flex-direction: column;
-    padding: 20px 0;
-    z-index: 10;
+  width: 250px;
+  background-color: white;
+  box-shadow: 2px 0 10px rgba(0,0,0,0.1);
+  display: flex;
+  flex-direction: column;
+  padding: 20px 0;
+  z-index: 10;
+  flex-shrink: 0;
+  height: 100vh;
+  overflow-y: auto;
+  scrollbar-gutter: stable;       /* Chrome/Edge/Safari */
+  scrollbar-width: none;          /* Firefox: hide by default */
+  -ms-overflow-style: none;       /* IE 10+ */
+  position: relative;
+  left: 0;
+  transition: none;
 }
+
+/* WebKit baseline: small but hidden-looking scrollbar (kept hoverable) */
+.sidebar::-webkit-scrollbar {
+  width: 8px;                      /* must be > 0 to be hoverable */
+  background: transparent;
+}
+.sidebar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.sidebar::-webkit-scrollbar-thumb {
+  background-color: transparent;
+  border-radius: 4px;
+}
+
+/* Show scroll thumb on hover (WebKit) */
+.sidebar:hover::-webkit-scrollbar-thumb {
+  background-color: rgba(108, 92, 231, 0.35);
+}
+.sidebar:hover::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+/* Firefox: reveal thin colored scrollbar on hover */
+.sidebar:hover {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(108, 92, 231, 0.35) transparent;
+}
+
 
 .logo {
     display: flex;
@@ -79,9 +118,9 @@ body {
 }
 
 .playlist-section {
-    padding: 0 20px;
-    flex-grow: 1;
-    overflow-y: auto;
+  padding: 0 20px;
+  flex-grow: 1;
+  /* overflow-y: auto;  remove this */
 }
 
 .section-header {
@@ -165,11 +204,12 @@ body {
 
 /* Main Content Styles */
 .main-content {
-    flex-grow: 1;
-    display: flex;
-    flex-direction: column;
-    overflow-y: auto;
-    background-color: #f9f9f9;
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+  background-color: #f9f9f9;
+  min-height: 100vh;
+  overflow-y: auto;     /* add so the right side can scroll too */
 }
 
 .search-bar {
@@ -530,13 +570,81 @@ body {
     100% { transform: scale(1); }
 }
 
-/* Responsive */
+/* Responsive (merged) */
 @media (max-width: 992px) {
-    .sidebar { width: 80px; }
-    .logo span, .menu-item span, .section-header span, .open-btn span, .dropdown-item span { display: none; }
-    .open-btn { justify-content: center; padding: 10px; }
-    .open-btn i { margin: 0; }
-    .player-container { flex-direction: column; align-items: center; text-align: center; }
-    .album-art { width: 250px; height: 250px; }
-    .song-info { width: 100%; }
+
+  .logo span, .menu-item span, .section-header span, .open-btn span, .dropdown-item span { display: none; }
+  .open-btn { justify-content: center; padding: 10px; }
+  .open-btn i { margin: 0; }
+  .player-container { flex-direction: column; align-items: center; text-align: center; }
+  .album-art { width: 250px; height: 250px; }
+  .song-info { width: 100%; }
+
+  /* Hamburger button now visible on small screens */
+  .hamburger { display: block; }
+
+  /* Mobile sidebar behavior: override desktop sidebar */
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: -250px; /* hidden */
+    height: 100vh;
+    transition: left 0.3s ease;
+    z-index: 200;
+  }
+  .sidebar.active { left: 0; } /* slide in */
+
+}
+
+/* Main-section helpers */
+.main-section.hidden { display: none; }
+.main-section { padding: 20px; }
+
+/* Bottom nav (mobile) kept in its narrower breakpoint */
+@media (max-width: 768px) {
+  .bottom-nav {
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+    position: fixed;
+    bottom: 0; left: 0;
+    width: 100%;
+    background: white;
+    border-top: 1px solid #ddd;
+    padding: 8px 0;
+    z-index: 150;
+  }
+
+  .bottom-nav .nav-item {
+    flex-grow: 1;
+    text-align: center;
+    color: var(--text-color);
+    font-size: 12px;
+    cursor: pointer;
+  }
+
+  .bottom-nav .nav-item i {
+    display: block;
+    font-size: 20px;
+    margin-bottom: 3px;
+    color: var(--dark-color);
+  }
+
+  .bottom-nav .nav-item.active i,
+  .bottom-nav .nav-item.active span {
+    color: var(--primary-color);
+  }
+
+  /* Push main content above bottom nav */
+  .main-content { padding-bottom: 60px; }
+}
+
+/* Accessibility: visible focus outlines for keyboard users on interactive elements */
+.control-btn:focus,
+.open-btn:focus,
+.hamburger:focus,
+.modal-actions button:focus,
+.dropdown-item:focus {
+  outline: 3px solid rgba(108, 92, 231, 0.18);
+  outline-offset: 2px;
 }
