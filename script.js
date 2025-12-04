@@ -5,6 +5,7 @@ import * as AlbumManager from './album-manager.js';
 import * as ArtistManager from './artist-manager.js';
 import * as QueueManager from './queue-manager.js';
 import * as DiscoverManager from './discover-manager.js';
+import { db } from './db.js'; // Import the new Dexie DB instance
 
 // --- Shared Context & State ---
 // This object will hold state and functions to be shared across the module scope
@@ -16,16 +17,13 @@ const playerContext = {
     isShuffled: false,
     selectedTrackIds: new Set(),
     repeatState: 0, // 0: no-repeat, 1: repeat-all, 2: repeat-one
-    dbInstance: null,
+    dbInstance: db, // Use the Dexie instance
     loadTrack: () => {},
     renderTrackContextMenu: () => {},
     // Add a reference for showMessage to the context
     showMessage: () => {},
 };
-
-const DB_NAME = 'GenesisAudioDB';
 const PLAYBACK_STATE_KEY = 'genesis_playback_state';
-const DB_STORE = 'audioFiles';
 
     // --- DOM Elements ---
     const audioPlayer = document.getElementById('audio-player');
@@ -140,7 +138,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Assign state arrays to the context
     let libraryTracks = playerContext.libraryTracks;
     let trackQueue = playerContext.trackQueue;
-    let dbInstance = playerContext.dbInstance;
+    let dbInstance = playerContext.dbInstance; // This is now the Dexie instance
 
     // Initialize the Playlist Manager
     PlaylistManager.init({
@@ -157,56 +155,6 @@ document.addEventListener('DOMContentLoaded', function() {
         startPlayback: startPlayback, // Pass startPlayback
         showConfirmation: showConfirmation // Pass the confirmation function
     });
-
-    // --- IndexedDB Logic (For Persistent Audio) ---
-    function initDB() {
-        return new Promise((resolve, reject) => {
-            const request = indexedDB.open(DB_NAME, 1);
-            request.onupgradeneeded = (event) => {
-                const db = event.target.result;
-                if (!db.objectStoreNames.contains(DB_STORE)) {
-                    db.createObjectStore(DB_STORE);
-                }
-            };
-            request.onsuccess = (event) => {
-                playerContext.dbInstance = event.target.result;
-                resolve(playerContext.dbInstance); // Resolve with the newly assigned dbInstance for clarity
-            };
-            request.onerror = (event) => reject(event.target.error);
-        });
-    }
-
-    function saveFileToDB(id, fileBlob) {
-        return new Promise((resolve, reject) => {
-            if (!playerContext.dbInstance) return reject("DB not initialized");
-            const transaction = playerContext.dbInstance.transaction([DB_STORE], "readwrite");
-            const store = transaction.objectStore(DB_STORE);
-            const request = store.put(fileBlob, id);
-            request.onsuccess = () => resolve();
-            request.onerror = (e) => reject(e.target.error);
-        });
-    }
-
-    function getFileFromDB(id) {
-        return new Promise((resolve) => {
-            if (!playerContext.dbInstance) return resolve(null);
-            const transaction = playerContext.dbInstance.transaction([DB_STORE], "readonly");
-            const store = transaction.objectStore(DB_STORE);
-            const request = store.get(id);
-            request.onsuccess = (event) => resolve(event.target.result);
-            request.onerror = () => resolve(null);
-        });
-    }
-
-    function deleteFileFromDB(id) {
-        return new Promise((resolve) => {
-            if (!playerContext.dbInstance) return resolve();
-            const transaction = playerContext.dbInstance.transaction([DB_STORE], "readwrite");
-            const store = transaction.objectStore(DB_STORE);
-            store.delete(id);
-            resolve();
-        });
-    }
 
     // --- Helpers ---
     function showMessage(msg) {
@@ -272,23 +220,20 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     async function restoreSession() {
-        await initDB();
-        try { // Restore Library
-            const stored = localStorage.getItem('genesis_offline_playlist');
-            if (stored) {
-                const metaQueue = JSON.parse(stored);
-                // Rehydrate the library from stored metadata
-                const restorationPromises = metaQueue.map(async (t) => {
-                    let trackData = { ...t, objectURL: null }; // Start with stored metadata
+        try {
+            // Restore Library directly from Dexie
+            const storedTracks = await db.tracks.toArray();
+            if (storedTracks) {
+                const restorationPromises = storedTracks.map(async (track) => {
+                    let trackData = { ...track, objectURL: null };
 
-                    if (trackData.isURL) {
-                        trackData.objectURL = trackData.url; // Restore URL for streams
+                    if (track.isURL) {
+                        trackData.objectURL = track.url;
                     } else {
-                        const blob = await getFileFromDB(trackData.id);
-                        if (blob) {
-                            trackData.objectURL = URL.createObjectURL(blob);
+                        // The audioBlob is already part of the track object from Dexie
+                        if (track.audioBlob) {
+                            trackData.objectURL = URL.createObjectURL(track.audioBlob);
                         }
-                        // If blob is missing, objectURL remains null, making the track correctly unplayable.
                     }
 
                     // Parse lyrics if they exist
@@ -351,9 +296,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Initialize the Library Manager
     LibraryManager.init({
-        getDB: () => playerContext.dbInstance,
-        saveFileToDB: saveFileToDB,
-        deleteFileFromDB: deleteFileFromDB,
+        getDB: () => db, // Pass Dexie instance
+        saveTrackToDB: (track) => db.tracks.put(track),
+        deleteTrackFromDB: (id) => db.tracks.delete(id),
         showMessage: showMessage,
         getLibrary: () => playerContext.libraryTracks,
         setLibrary: (newLibrary) => { playerContext.libraryTracks = newLibrary; },
@@ -415,8 +360,54 @@ document.addEventListener('DOMContentLoaded', function() {
     DiscoverManager.init({
         discoverContent: document.querySelector('#discover-section .discover-content'),
         showMessage,
-        startPlayback: PlaybackManager.startPlayback,
+        startPlayback: PlaybackManager.startPlayback, // For streaming
+        downloadAndCacheTrack: downloadAndCacheTrack, // For caching
     });
+
+    /**
+     * Downloads a track from the Discover section and adds it to the library.
+     * @param {object} track - The track object from the Jamendo API.
+     */
+    async function downloadAndCacheTrack(track) {
+        if (!track || !track.id) {
+            showMessage('Invalid track data provided.');
+            return;
+        }
+
+        // Check if track is already in the library
+        if (playerContext.libraryTracks.some(t => t.id === track.id.toString())) {
+            showMessage(`"${track.name}" is already in your library.`);
+            return;
+        }
+
+        showMessage(`Downloading "${track.name}"...`);
+
+        try {
+            const response = await fetch(`/download/${track.id}`);
+            if (!response.ok) throw new Error(`Server error: ${response.status}`);
+            
+            const { audioUrl, trackData } = await response.json();
+            if (!audioUrl) throw new Error('No audio URL returned from server.');
+
+            // Fetch the actual audio file as a blob
+            // We use CORS here because the audioUrl is from a different domain (jamendo.com)
+            const audioResponse = await fetch(audioUrl, { mode: 'cors' });
+            if (!audioResponse.ok) throw new Error(`Failed to fetch audio from Jamendo. Status: ${audioResponse.status}`);
+            const audioBlob = await audioResponse.blob();
+
+            // Create a File-like object to pass to handleFiles
+            // Use the original filename from Jamendo if available, otherwise construct one
+            const fileName = trackData.name ? `${trackData.name}.mp3` : `${track.id}.mp3`;
+            const audioFile = new File([audioBlob], fileName, { type: 'audio/mpeg' });
+            
+            // Use the existing file handling logic to process and save the track
+            await handleFiles([audioFile], { isFromDiscover: true, discoverData: trackData });
+            showMessage(`Successfully added "${track.name}" to your library!`);
+        } catch (error) {
+            console.error('Error downloading or caching track:', error);
+            showMessage(`Failed to add "${track.name}" to library. Please try again.`);
+        }
+    }
 
     // --- Theme Toggle Logic ---
     const themeToggle = document.getElementById('theme-toggle-checkbox');
@@ -988,16 +979,16 @@ document.addEventListener('DOMContentLoaded', function() {
         editModal.classList.add('hidden');
     }
 
-    async function handleFiles(fileList) {
+    async function handleFiles(fileList, options = {}) {
         if (!fileList.length) return;
 
         const openMenuText = document.getElementById('open-menu-text');
         const originalText = openMenuText.textContent;
         openMenuBtn.disabled = true;
-        openMenuText.textContent = 'Processing...';
+        if (!options.isFromDiscover) openMenuText.textContent = 'Processing...';
 
         try {
-            await LibraryManager.handleFiles(fileList);
+            await LibraryManager.handleFiles(fileList, options);
         } catch (error) {
             console.error("Error handling files:", error);
         } finally {
@@ -1020,8 +1011,8 @@ document.addEventListener('DOMContentLoaded', function() {
         urlInput.focus();
     });
 
-    fileInput.addEventListener('change', (e) => handleFiles(e.target.files));
-    folderInput.addEventListener('change', (e) => handleFiles(e.target.files));
+    fileInput.addEventListener('change', (e) => handleFiles(e.target.files, {}));
+    folderInput.addEventListener('change', (e) => handleFiles(e.target.files, {}));
 
     urlCancelBtn.addEventListener('click', () => urlModal.classList.add('hidden'));
     urlLoadBtn.addEventListener('click', () => {

@@ -1,11 +1,9 @@
 import { extractMetadata } from './metadata-extractor.js';
 
-const LIBRARY_META_KEY = 'genesis_offline_playlist';
-
 let config = {
     getDB: () => null,
-    saveFileToDB: () => Promise.reject(),
-    deleteFileFromDB: () => Promise.resolve(),
+    saveTrackToDB: () => Promise.reject(),
+    deleteTrackFromDB: () => Promise.resolve(),
     showMessage: () => {},
     getLibrary: () => [],
     setLibrary: () => {},
@@ -24,40 +22,60 @@ export function init(dependencies) {
  * Saves the library's metadata to localStorage.
  */
 export function saveLibraryMetadata() {
-    const library = config.getLibrary();
-    const meta = library.map(t => ({
-        id: t.id, name: t.name, duration: t.duration, isURL: t.isURL,
-        url: t.isURL ? t.objectURL : null,
-        artist: t.artist || null, album: t.album || null,
-        coverURL: t.coverURL || null, lyrics: t.lyrics || null,
-    }));
-    localStorage.setItem(LIBRARY_META_KEY, JSON.stringify(meta));
+    // This function is now obsolete as Dexie handles persistence.
+    // It can be kept for other potential uses or removed.
 }
 
 /**
  * Processes a list of files, extracts metadata, and adds them to the library.
  * @param {FileList} fileList - The list of files to process.
  */
-export async function handleFiles(fileList) {
+export async function handleFiles(fileList, options = {}) {
     if (!fileList.length) return;
     if (!config.getDB()) return;
 
     config.showMessage(`Processing ${fileList.length} files...`);
 
-    const processingPromises = Array.from(fileList).map(async (file) => {
-        const trackData = await extractMetadata(file);
-        if (trackData) {
-            await config.saveFileToDB(trackData.id, file);
+    const newTracks = [];
+    for (const file of Array.from(fileList)) {
+        let metadata;
+        if (options.isFromDiscover && options.discoverData) {
+            // Use the metadata provided from the Discover API
+            const data = options.discoverData;
+            metadata = {
+                id: data.id.toString(), // Ensure ID is a string
+                name: data.name || 'Unknown Title',
+                artist: data.artist_name || 'Unknown Artist',
+                album: data.album_name || 'Unknown Album',
+                coverURL: data.image || null,
+                duration: data.duration || 0,
+                // Map enriched fields from the discover object
+                bio: data.bio || null,
+                tags: data.tags || [],
+                lyricsUrl: data.lyricsUrl || null,
+                similarArtists: data.similarArtists || [],
+            };
+        } else {
+            // Fallback to extracting metadata from the file itself
+            metadata = await extractMetadata(file);
         }
-        return trackData;
-    });
 
-    const newTracks = (await Promise.all(processingPromises)).filter(Boolean);
+        if (metadata) {
+            // Create the full track object for Dexie
+            const trackForDB = {
+                ...metadata,
+                downloaded: true, // Mark this track as fully downloaded
+                audioBlob: file, // Store the actual file blob
+            };
+            await config.saveTrackToDB(trackForDB);
+            newTracks.push(metadata); // Push metadata to the in-memory library
+        }
+    }
 
     if (newTracks.length > 0) {
         const currentLibrary = config.getLibrary();
         config.setLibrary([...currentLibrary, ...newTracks]);
-        saveLibraryMetadata();
+        // No need to call saveLibraryMetadata() anymore
         config.showMessage(`Added ${newTracks.length} track(s).`);
         config.onLibraryUpdate();
     } else {
@@ -79,11 +97,10 @@ export async function removeTrack(trackId) {
     config.setLibrary(library);
 
     // DB & URL Cleanup
-    if (!removedTrack.isURL) await config.deleteFileFromDB(removedTrack.id);
+    if (!removedTrack.isURL) await config.deleteTrackFromDB(removedTrack.id);
     if (removedTrack.objectURL && !removedTrack.isURL) URL.revokeObjectURL(removedTrack.objectURL);
     if (removedTrack.coverURL) URL.revokeObjectURL(removedTrack.coverURL);
 
-    saveLibraryMetadata();
     config.onLibraryUpdate();
 
     return removedTrack;

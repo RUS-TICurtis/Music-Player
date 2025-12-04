@@ -331,6 +331,22 @@ body.dark-theme .open-btn {
     min-width: 0; /* And this is also key for truncation */
     margin: 0;
 }
+.recent-media-card .card-body {
+    padding: 8px 0;
+}
+.card-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+}
+.card-tags span {
+    font-size: 10px;
+    font-weight: 600;
+    background-color: var(--text-light);
+    color: var(--text-color);
+    padding: 3px 6px;
+    border-radius: 4px;
+}
 .home-layout {
     display: flex;
     flex-direction: column;
@@ -1194,6 +1210,25 @@ input:checked + .slider:before { transform: translateX(20px); }
     grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
     gap: 20px;
 }
+
+.discover-search-container {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-left: auto;
+}
+
+.discover-search-container input {
+    padding: 10px 15px;
+    border: 1px solid var(--text-light);
+    border-radius: 8px;
+    min-width: 250px;
+    font-size: 14px;
+    background-color: var(--surface-color);
+    color: var(--dark-color);
+}
+.discover-search-container input:focus { outline: 1px solid var(--primary-color); }
+
 /* --- Playlist Detail View Styling --- */
 
 /* Defines a header and row layout using CSS Grid */
