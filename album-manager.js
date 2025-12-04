@@ -79,8 +79,9 @@ function openAlbumView(album) {
                 <button id="album-play-all-btn" class="btn-primary"><i class="fas fa-play"></i> Play All</button>
             </div>
         </div>
-        <div class="track-list-header">
-            <input type="checkbox" class="select-all-checkbox" title="Select all tracks"><span>#</span><span>Title</span><span>Duration</span><span></span>
+        <div class="track-list-header"> <!-- Header for the list -->
+            <input type="checkbox" class="select-all-checkbox" title="Select all tracks">
+            <span style="grid-column: 2;">#</span><span>Title</span><span>Album</span><span>Duration</span><span></span>
         </div>
         <div id="album-track-list"></div>
     `;
@@ -91,14 +92,14 @@ function openAlbumView(album) {
     });
 
     document.getElementById('album-play-all-btn').addEventListener('click', () => {
-        config.startPlayback(album.trackIds, 0);
+        config.startPlayback(album.trackIds, 0, false);
         config.showMessage(`Playing album: ${album.name}`);
     });
 
     document.getElementById('album-shuffle-btn').addEventListener('click', () => {
-        config.startPlayback(album.trackIds, 0, true); // Pass true for shuffle
+        config.startPlayback(album.trackIds, 0, true);
         config.showMessage(`Shuffling album: ${album.name}`);
     });
 
-    config.renderDetailTrackList(album.trackIds, document.getElementById('album-track-list'), { showArtist: false });
+    config.renderDetailTrackList(album.trackIds, document.getElementById('album-track-list'), { showAlbum: false });
 }

@@ -24,40 +24,17 @@ const { fetchMusicBrainz } = require('./musicbrainz.js');
 
 app.get('/discover', async (req, res) => {
   try {
-    const { q } = req.query;
-    const jamendoTracks = await fetchJamendo(q || 'popular');
-
-    // Enrich each track with data from other APIs
-    const enriched = await Promise.all(
-      jamendoTracks.map(async track => {
-        const artistName = track.artist_name;
-
-        const [audioDB, lastFM, genius, mb] = await Promise.all([
-          fetchAudioDB(artistName),
-          fetchLastFM(artistName),
-          fetchGenius(track.name + ' ' + artistName),
-          fetchMusicBrainz(artistName)
-        ]);
-
-        return {
-          id: track.id,
-          title: track.name,
-          artist: artistName,
-          album: track.album_name,
-          audioUrl: track.audio,
-          albumArt: track.album_image || audioDB?.strArtistThumb,
-          bio: audioDB?.strBiographyEN || lastFM?.bio?.summary || null,
-          tags: lastFM?.tags?.tag?.map(t => t.name) || [],
-          similarArtists: lastFM?.similar?.artist?.map(a => a.name) || [],
-          lyricsUrl: genius?.url || null,
-          mbid: mb?.id || null
-        };
-      })
-    );
-
-    res.json(enriched);
+    // The 'q' parameter from the client will be used as the 'tags' parameter for Jamendo
+    const query = req.query.q || 'popular'; // Default to 'popular' if no query
+    const jamendoTracks = await fetchJamendo(query);
+    
+    // Directly return the tracks from Jamendo.
+    // The client will be responsible for displaying them.
+    // The original structure was too slow, making multiple API calls per track.
+    // Enrichment can happen when a user decides to *add* a track to their library.
+    res.json(jamendoTracks);
   } catch (error) {
-    console.error('Discover error:', error.message);
+    console.error('Discover error:', error);
     res.status(500).json({ error: 'Failed to fetch discover data' });
   }
 });

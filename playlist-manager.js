@@ -18,7 +18,8 @@ let config = {
     showMessage: () => {}, // Add showMessage
     renderTrackContextMenu: () => {},
     getTrackDetailsFromId: () => Promise.reject(),
-    startPlayback: () => {}, // Add startPlayback to the config
+    startPlayback: () => {},
+    renderDetailTrackList: () => {}, // Add renderDetailTrackList
     showConfirmation: () => Promise.resolve(false) // Add showConfirmation
 };
 
@@ -218,7 +219,7 @@ async function openPlaylistView(id) {
             </div>
         </div>
         <div class="track-list-header">
-            <input type="checkbox" class="select-all-checkbox" title="Select all tracks"><span>#</span><span>Title</span><span>Artist</span><span>Duration</span><span></span>
+            <input type="checkbox" class="select-all-checkbox" title="Select all tracks"><span>#</span><span>Title</span><span>Artist</span><span>Duration</span><span title="Actions"></span>
         </div>
         <div id="playlist-track-list"></div>
     `;
@@ -245,81 +246,10 @@ async function openPlaylistView(id) {
     }
 
     const trackListContainer = document.getElementById('playlist-track-list');
-    renderPlaylistTracks(id, trackListContainer);
-}
-
-async function renderPlaylistTracks(playlistId, trackListContainer) {
-    const playlist = playlists[playlistId];
-    // Use the formatTime function from the main script's scope if needed, or pass it in init.
-    // For now, assuming it's globally available or not strictly needed here.
-
-    if (playlist.trackIds.length === 0) {
-        trackListContainer.innerHTML = '<p style="padding: 20px;">This playlist is empty.</p>';
-        return;
-    }
-
-    let trackIndex = 1;
-    const trackRows = await Promise.all(playlist.trackIds.map(async (trackId) => {
-        try {
-            const trackData = await config.getTrackDetailsFromId(trackId);
-            const trackRow = document.createElement('div');
-            trackRow.className = 'track-list-row';
-            trackRow.dataset.id = trackId;
-            // Note: The checkbox for individual selection is added in script.js's renderDetailTrackList
-            trackRow.innerHTML = `
-                <span class="track-num">${trackIndex++}</span>
-                <span class="track-title">${trackData.name || 'Unknown Title'}</span>
-                <span class="track-artist">${trackData.artist || 'Local File'}</span>
-                <span class="track-duration">${config.formatTime(trackData.duration)}</span>
-                <button class="control-btn small track-action-btn" title="More options"><i class="fas fa-ellipsis-v"></i></button>
-            `;
-
-            trackRow.addEventListener('click', (e) => {
-                if (e.target.closest('.track-action-btn')) return;
-                const startIndex = playlist.trackIds.indexOf(trackId);
-                if (startIndex > -1 && playlist.trackIds.length > 0) {
-                    config.startPlayback(playlist.trackIds, startIndex);
-                }
-            });
-
-            const actionBtn = trackRow.querySelector('.track-action-btn');
-            if (actionBtn) {
-                actionBtn.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    config.renderTrackContextMenu(trackId, actionBtn, { isFromPlaylist: true, playlistId: id });
-                });
-            }
-            return trackRow;
-        } catch (error) {
-            console.error("Error fetching track for playlist:", error);
-            return null;
-        }
-    }));
-
-    trackListContainer.innerHTML = ''; // Clear previous content
-    trackRows.filter(Boolean).forEach(row => trackListContainer.appendChild(row));
+    config.renderDetailTrackList(playlist.trackIds, trackListContainer, { isFromPlaylist: true, playlistId: id });
 }
 
 // --- Public API ---
-
-/**
- * Initializes the playlist manager with necessary dependencies.
- * @param {object} dependencies - The dependencies from the main script.
- */
-export function init(dependencies) {
-    // Merge provided dependencies with defaults
-    config = { ...config, ...dependencies };
-
-    loadPlaylists();
-    renderPlaylists();
-
-    if (config.createPlaylistBtn) {
-        config.createPlaylistBtn.addEventListener('click', () => {
-            const name = prompt('Enter playlist name:');
-            if (name) createPlaylist(name, true);
-        });
-    }
-}
 
 /**
  * Adds a track to a specific playlist.
@@ -329,10 +259,12 @@ export function init(dependencies) {
  */
 export function addTrackToPlaylist(playlistId, trackId) {
     if (!playlists[playlistId]) return false;
-    if (!playlists[playlistId].trackIds.includes(trackId)) {
-        playlists[playlistId].trackIds.push(trackId);
-        savePlaylists();
+    // Check if the track is already in the playlist
+    if (playlists[playlistId].trackIds.includes(trackId)) {
+        return false; // Indicate that the track was not added because it's a duplicate
     }
+    playlists[playlistId].trackIds.push(trackId);
+    savePlaylists();
     return true;
 }
 
@@ -369,8 +301,25 @@ export function refresh(playlistId) {
     renderPlaylists(); // Always refresh the main and sidebar lists
     if (playlistId && !config.playlistDetailView.classList.contains('hidden')) {
         const trackListContainer = document.getElementById('playlist-track-list');
-        if (trackListContainer) {
-            renderPlaylistTracks(playlistId, trackListContainer);
-        }
+        if (trackListContainer) openPlaylistView(playlistId); // Re-render the view
+    }
+}
+
+/**
+ * Initializes the playlist manager with necessary dependencies.
+ * @param {object} dependencies - The dependencies from the main script.
+ */
+export function init(dependencies) {
+    // Merge provided dependencies with defaults
+    config = { ...config, ...dependencies };
+
+    loadPlaylists();
+    renderPlaylists();
+
+    if (config.createPlaylistBtn) {
+        config.createPlaylistBtn.addEventListener('click', () => {
+            const name = prompt('Enter playlist name:');
+            if (name) createPlaylist(name, true);
+        });
     }
 }

@@ -149,6 +149,21 @@
         </div>
       </div>
 
+      <!-- Template for a Discover Track Card -->
+      <!-- This template now uses the .recent-media-card styling for consistency -->
+      <template id="discover-track-template">
+        <div class="recent-media-card discover-card">
+          <div class="album-art">
+            <img src="" alt="Album Art" class="discover-album-art">
+          </div>
+          <div class="card-footer">
+            <h5 class="discover-track-title">Track Title</h5>
+            <button class="control-btn small play-stream-btn" title="Play Stream"><i class="fas fa-play"></i></button>
+            <button class="control-btn small download-track-btn" title="Add to Library"><i class="fas fa-download"></i></button>
+          </div>
+        </div>
+      </template>
+
       <!-- 3. PLAYLISTS SECTION -->
       <div id="playlists-section" class="main-section hidden">
         <div class="playlists-header">
@@ -197,9 +212,6 @@
           </div>
         </div>
         <div class="queue-list-container" style="background: transparent; margin: 0; padding: 0 30px 30px;">
-          <div class="track-list-header">
-            <span>#</span><span>Title</span><span>Artist</span><span>Duration</span><span></span>
-          </div>
           <div id="queue-list" class="queue-list">
             <!-- Queue items will be rendered here in a table format -->
           </div>
@@ -317,6 +329,20 @@
     </div>
   </div>
 
+  <!-- Add to Playlist Modal -->
+  <div id="add-to-playlist-modal" class="modal hidden">
+    <div class="modal-content">
+      <h3>Add to Playlist</h3>
+      <div id="playlist-selection-list" class="playlist-selection-list">
+        <!-- Existing playlists will be rendered here -->
+      </div>
+      <div class="modal-actions">
+        <button id="playlist-modal-cancel-btn">Cancel</button>
+        <button id="playlist-modal-new-btn" class="primary">New Playlist</button>
+      </div>
+    </div>
+  </div>
+
   <div id="message-modal" class="modal hidden">
     <div class="modal-content">
       <p id="modal-text"></p>
@@ -376,15 +402,15 @@
     </div>
   </div>
 
-  <script src="./libs/music-metadata-browser.min.js"></script>
-  <script src="./libs/dexie.min.js"></script>
-  <script src="./libs/jsmediatags.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/music-metadata-browser@2.5.10/dist/music-metadata-browser.min.js"></script>
+  <script src="https://unpkg.com/dexie@3/dist/dexie.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jsmediatags/3.9.5/jsmediatags.min.js"></script>
   <script type="module" src="library-manager.js"></script>
-  <script type="module" src="playback-manager.js"></script>
-  <script type="module" src="album-manager.js"></script>
-  <script type="module" src="artist-manager.js"></script>
   <script type="module" src="queue-manager.js"></script>
   <script type="module" src="discover-manager.js"></script>
   <script type="module" src="script.js"></script>
+  <script>
+    
+  </script>
 </body>
 </html>

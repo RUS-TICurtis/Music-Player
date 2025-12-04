@@ -9,7 +9,9 @@ let config = {
     formatTime: () => "0:00",
     loadTrack: () => {},
     renderTrackContextMenu: () => {},
-    PlaylistManager: null,
+    createPlaylist: () => null, // from script.js
+    addTrackToPlaylist: () => false, // from script.js
+    refreshPlaylists: () => {}, // from script.js
 };
 
 let draggedIndex = null;
@@ -37,12 +39,12 @@ export function renderQueueTable() {
     config.queueHeaderTitle.textContent = `Play Queue (${config.playerContext.trackQueue.length})`;
     const headerHTML = `
         <div class="track-list-header queue-header">
-            <span></span> <!-- Art -->
-            <span>Title</span>
-            <span>Artist</span>
-            <span>Album</span>
-            <span><i class="fas fa-clock"></i></span> <!-- Duration -->
-            <span></span> <!-- Actions -->
+            <div class="queue-item-art"></div> <!-- Art column placeholder -->
+            <span class="track-title">Title</span>
+            <span class="track-artist">Artist</span>
+            <span class="track-album">Album</span>
+            <span class="track-duration"><i class="fas fa-clock"></i></span>
+            <span class="track-actions"></span> <!-- Actions column placeholder -->
         </div>`;
     config.queueList.insertAdjacentHTML('beforeend', headerHTML);
     if (config.playerContext.trackQueue.length === 0) {
@@ -61,11 +63,12 @@ export function renderQueueTable() {
             <div class="queue-item-art">
                 ${track.coverURL ? `<img src="${track.coverURL}" alt="${track.name}" draggable="false">` : `<div class="placeholder-icon"><i class="fas fa-music"></i></div>`}
             </div>
-            <span class="track-title" style="color: ${isActive ? 'var(--primary-color)' : 'var(--dark-color)'};">${track.name}</span>
-            <span class="track-artist">${track.artist || 'Unknown Artist'}</span>
-            <span class="track-album">${track.album || 'N/A'}</span>
+            <div class="queue-item-details">
+                <span class="track-title" style="color: ${isActive ? 'var(--primary-color)' : 'var(--dark-color)'};">${track.name}</span>
+                <span class="track-artist">${track.artist || 'Unknown Artist'}</span>
+            </div>
             <span class="track-duration">${config.formatTime(track.duration)}</span>
-            <span class="track-actions"><button class="control-btn small track-action-btn" title="More options"><i class="fas fa-ellipsis-v"></i></button></span>
+            <button class="control-btn small track-action-btn" title="More options"><i class="fas fa-ellipsis-v"></i></button>
         `;
 
         div.addEventListener('dragstart', (e) => {
@@ -116,7 +119,7 @@ export function renderQueueTable() {
 
         div.addEventListener('click', (e) => {
             if (e.target.closest('.track-action-btn')) return;
-            if (track.objectURL) config.loadTrack(index);
+            if (track.objectURL) config.loadTrack(index); // Correct: plays track within the existing queue
             else config.showMessage(`File for "${track.name}" is missing.`);
         });
 
@@ -138,12 +141,12 @@ function saveQueueAsPlaylist() {
     const playlistName = prompt("Enter a name for the new playlist:");
     if (!playlistName || playlistName.trim() === "") return;
 
-    const newPlaylistId = config.PlaylistManager.createPlaylist(playlistName, false);
+    const newPlaylistId = config.createPlaylist(playlistName, false);
     if (newPlaylistId) {
         config.playerContext.trackQueue.forEach(track => {
-            config.PlaylistManager.addTrackToPlaylist(newPlaylistId, track.id);
+            config.addTrackToPlaylist(newPlaylistId, track.id);
         });
         config.showMessage(`Playlist "${playlistName}" created with ${config.playerContext.trackQueue.length} tracks.`);
-        config.PlaylistManager.refresh();
+        config.refreshPlaylists();
     }
 }

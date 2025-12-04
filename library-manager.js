@@ -43,16 +43,17 @@ export async function handleFiles(fileList, options = {}) {
             // Use the metadata provided from the Discover API
             const data = options.discoverData;
             metadata = {
-                id: data.id ? data.id.toString() : Date.now().toString(),
-                title: data.name || 'Unknown Title',
-                artist: data.artist_name || 'Unknown Artist',
-                album: data.album_name || 'Unknown Album',
-                albumArtUrl: data.album_image || null,
+                id: data.id.toString(),
+                title: data.title || 'Unknown Title',
+                artist: data.artist || 'Unknown Artist',
+                album: data.album || 'Unknown Album',
+                albumArtUrl: data.albumArt || null, // From discover, this is a permanent URL
                 duration: data.duration || 0,
-                bio: data.bio || '',
-                tags: Array.isArray(data.tags) ? data.tags : [],
-                lyricsUrl: data.lyricsUrl || '',
-                mbid: data.mbid || '',
+                bio: data.bio || null,
+                tags: data.tags || [],
+                lyricsUrl: data.lyricsUrl || null,
+                similarArtists: data.similarArtists || [],
+                mbid: data.mbid || null,
             };
         } else {
             // Fallback to extracting metadata from the file itself
@@ -60,36 +61,21 @@ export async function handleFiles(fileList, options = {}) {
         }
 
         if (metadata) {
-            let albumArtBlob = metadata.coverBlob || null;
-
-            // If there's an art URL but no blob, fetch it. This is key for offline.
-            if (metadata.albumArtUrl && !albumArtBlob) {
-                try {
-                    console.log(`Fetching album art for ${metadata.title} from ${metadata.albumArtUrl}`);
-                    const artResponse = await fetch(metadata.albumArtUrl, { mode: 'cors' });
-                    if (artResponse.ok) {
-                        albumArtBlob = await artResponse.blob();
-                    }
-                } catch (e) {
-                    console.warn(`Could not fetch album art for ${metadata.title}`, e);
-                }
-            }
-
             // Create the full track object for Dexie
             const trackForDB = {
                 ...metadata,
                 name: metadata.title, // Ensure 'name' field is populated for other parts of the app that might still use it
-                albumArtBlob: albumArtBlob, // Save the art blob for offline use
-                coverBlob: albumArtBlob, // Keep for compatibility if other parts use it
+                coverBlob: metadata.coverBlob, // Save the cover blob
                 downloaded: true, // Mark this track as fully downloaded
                 audioBlob: file, // Store the actual file blob
             };
             // Use 'put' which will update the existing metadata-only entry with the audio blob
             await config.saveTrackToDB(trackForDB); 
 
+            // **THE FIX**: Push the complete object with a valid coverURL to the in-memory library
             const trackForMemory = { ...trackForDB };
-            if (trackForMemory.albumArtBlob) {
-                trackForMemory.coverURL = URL.createObjectURL(trackForMemory.albumArtBlob);
+            if (trackForMemory.coverBlob) {
+                trackForMemory.coverURL = URL.createObjectURL(trackForMemory.coverBlob);
             }
             newTracks.push(trackForMemory);
         }

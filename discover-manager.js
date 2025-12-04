@@ -14,27 +14,11 @@ let config = {
 export async function init(dependencies) {
     config = { ...config, ...dependencies };
     if (config.discoverContent) {
-        const searchInput = document.getElementById('discover-search-input');
-        const searchBtn = document.getElementById('discover-search-btn');
-
-        // Handle online/offline state changes
-        const updateOnlineStatus = () => {
-            const isOffline = !navigator.onLine;
-            searchInput.disabled = isOffline;
-            searchBtn.disabled = isOffline;
-            if (isOffline) {
-                searchInput.placeholder = "Search is disabled offline";
-            } else {
-                searchInput.placeholder = "Search artists, albums, tracks...";
-            }
-        };
-
-        window.addEventListener('online', updateOnlineStatus);
-        window.addEventListener('offline', updateOnlineStatus);
-        updateOnlineStatus(); // Set initial state
-
         // Load popular tracks on initial view
         await renderDiscoverGrid('popular');
+
+        const searchInput = document.getElementById('discover-search-input');
+        const searchBtn = document.getElementById('discover-search-btn');
 
         searchBtn.addEventListener('click', () => renderDiscoverGrid(searchInput.value));
         searchInput.addEventListener('keyup', (e) => {
@@ -44,26 +28,12 @@ export async function init(dependencies) {
 }
 
 async function cacheEnrichedData(track) {
-  // Fetch album art and convert to a blob for offline storage
-  let albumArtBlob = null;
-  if (track.albumArt) {
-    try {
-      const response = await fetch(track.albumArt);
-      if (response.ok) {
-        albumArtBlob = await response.blob();
-      }
-    } catch (error) {
-      console.warn(`Failed to fetch and cache album art for ${track.title}`, error);
-    }
-  }
-
   // Cache the track object
   await db.tracks.put({
     id: track.id.toString(),
     title: track.title,
     artist: track.artist,
     album: track.album,
-    albumArtBlob: albumArtBlob, // Store the blob
     audioUrl: track.audioUrl,
     albumArt: track.albumArt,
     bio: track.bio,
@@ -87,26 +57,25 @@ async function cacheEnrichedData(track) {
 }
 
 async function fetchDiscoverTracks(query = 'popular') {
-    // Offline-first strategy
     try {
-        if (!navigator.onLine) {
-            throw new Error("Offline mode detected. Searching cache.");
-        }
         const response = await fetch(`/discover?q=${encodeURIComponent(query)}`);
         if (!response.ok) {
             throw new Error(`Server responded with ${response.status}`);
         }
         const enrichedTracks = await response.json();
 
-        // Asynchronously cache each enriched track for future offline use
-        enrichedTracks.forEach(track => cacheEnrichedData(track));
-
+        // Cache each enriched track for offline use
+        if (enrichedTracks.length > 0) {
+            for (const track of enrichedTracks) {
+                await cacheEnrichedData(track);
+            }
+        }
         return enrichedTracks;
     } catch (error) {
-        console.warn('Network fetch failed:', error.message);
+        console.error('Failed to fetch discover tracks:', error);
         config.showMessage('Offline. Searching your local cache...');
 
-        // Fallback: If offline or server fails, search the local cache
+        // Fallback: If offline, search the local cache
         const qLower = query.toLowerCase();
         const cached = await db.tracks.filter(track => 
             track.title.toLowerCase().includes(qLower) || 
@@ -132,22 +101,21 @@ async function renderDiscoverGrid(query) {
 
     config.discoverContent.innerHTML = tracks.map(track => {
         // Jamendo API provides different image sizes, let's pick a medium one
-        const coverURL = track.albumArtBlob
-            ? URL.createObjectURL(track.albumArtBlob)
-            : (track.albumArt ? track.albumArt.replace('1.200x1200', '1.300x300') : './assets/default-art.png');
+        const coverURL = track.albumArt ? track.albumArt.replace('1.200x1200', '1.300x300') : 'https://via.placeholder.com/300';
         const tagsHTML = track.tags && track.tags.length > 0
             ? `<div class="card-tags">${track.tags.slice(0, 2).map(tag => `<span>${tag}</span>`).join('')}</div>`
             : '';
 
         return `
             <div class="recent-media-card" data-track-id="${track.id}">
-                <div class="album-art" data-action="play">
+                <div class="album-art">
                     <img src="${coverURL}" alt="${track.title}">
                 </div>
                 <div class="card-body">
                     ${tagsHTML}
                 </div>
                 <div class="card-footer">
+                    <button class="control-btn small card-footer-play-btn" title="Play"><i class="fas fa-play"></i></button>
                     <h5>${track.title}</h5>
                     <button class="control-btn small track-action-btn" title="Download" data-action="download"><i class="fas fa-download"></i></button>
                 </div>
@@ -157,26 +125,53 @@ async function renderDiscoverGrid(query) {
 
     config.discoverContent.querySelectorAll('.recent-media-card').forEach(card => {
         card.addEventListener('click', (e) => {
-            const action = e.target.closest('[data-action]')?.dataset.action;
-            if (!action) return;
+            // If a button was clicked, let its specific handler work.
+            if (e.target.closest('[data-action="download"]') || e.target.closest('.card-footer-play-btn')) return;
 
             const trackId = card.dataset.trackId;
             const trackData = tracks.find(t => t.id.toString() === trackId);
 
-            if (action === 'play' && trackData) {
-                // Create a track object compatible with our player
+            // Any other click on the card should trigger playback.
+            if (trackData) {
                 const playerTrack = {
                     id: trackData.id,
                     name: trackData.title,
                     artist: trackData.artist,
-                    album: track.album,
-                    duration: trackData.duration,
+                    album: trackData.album,
+                    duration: trackData.duration, // duration is often in seconds
                     coverURL: trackData.albumArt,
                     objectURL: trackData.audioUrl, // Direct audio URL for streaming
-                    isURL: true, // Mark as a stream
+                    isURL: true, // Mark as a stream (important for playback-manager)
                 };
-                config.startPlayback([playerTrack], 0);
-            } else if (action === 'download' && trackData) {
+                config.startPlayback([playerTrack]); // This call is now to the function passed from script.js
+            }
+        });
+
+        // Add a specific listener for the new play button
+        card.querySelector('.card-footer-play-btn').addEventListener('click', (e) => {
+            e.stopPropagation();
+            const trackId = card.dataset.trackId;
+            const trackData = tracks.find(t => t.id.toString() === trackId);
+            if (trackData) {
+                const playerTrack = {
+                    id: trackData.id,
+                    name: trackData.title,
+                    artist: trackData.artist,
+                    album: trackData.album,
+                    duration: trackData.duration,
+                    coverURL: trackData.albumArt,
+                    objectURL: trackData.audioUrl,
+                    isURL: true,
+                };
+                config.startPlayback([playerTrack]); // This call is now to the function passed from script.js
+            }
+        });
+
+        // Keep a separate, more specific listener for the download button.
+        card.querySelector('[data-action="download"]').addEventListener('click', (e) => {
+            const trackId = card.dataset.trackId;
+            const trackData = tracks.find(t => t.id.toString() === trackId);
+            if (trackData) {
                 config.downloadAndCacheTrack(trackData);
             }
         });

@@ -41,10 +41,10 @@ export function renderArtistsGrid() {
 
     config.artistsContent.innerHTML = artistList.map(artist => `
         <div class="artist-card" data-artist-name="${artist.name}">
-            <div class="artist-art">
-                ${artist.coverURL ? `<img src="${artist.coverURL}" alt="${artist.name}">` : `<i class="fas fa-user" style="font-size: 48px;"></i>`}
+            <div class="album-art-circular">
+                ${artist.coverURL ? `<img src="${artist.coverURL}" alt="${artist.name}">` : `<div class="placeholder-icon"><i class="fas fa-user"></i></div>`}
             </div>
-            <div class="artist-name">${artist.name}</div>
+            <div class="album-name">${artist.name}</div>
         </div>
     `).join('');
 
@@ -75,7 +75,7 @@ function openArtistView(artist) {
             </div>
         </div>
         <div class="track-list-header">
-            <input type="checkbox" class="select-all-checkbox" title="Select all tracks"><span>#</span><span>Title</span><span>Album</span><span>Duration</span><span></span>
+            <input type="checkbox" class="select-all-checkbox" title="Select all tracks"><span>#</span><span>Title</span><span>Album</span><span>Duration</span><span title="Actions"></span>
         </div>
         <div id="artist-track-list"></div>
     `;
@@ -86,7 +86,7 @@ function openArtistView(artist) {
     });
 
     document.getElementById('artist-play-all-btn').addEventListener('click', () => {
-        config.startPlayback(artist.trackIds, 0);
+        config.startPlayback(artist.trackIds, 0, false);
         config.showMessage(`Playing all tracks by ${artist.name}`);
     });
 
