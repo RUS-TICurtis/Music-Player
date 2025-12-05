@@ -5,6 +5,7 @@ let config = {
     showMessage: () => {},
     startPlayback: () => {},
     downloadAndCacheTrack: () => {},
+    getTrackDetailsFromId: () => Promise.reject(),
 };
 
 /**
@@ -128,13 +129,13 @@ async function renderDiscoverGrid(query) {
             // If a button was clicked, let its specific handler work.
             if (e.target.closest('[data-action="download"]') || e.target.closest('.card-footer-play-btn')) return;
 
-            const trackId = card.dataset.trackId;
+            const trackId = card.dataset.trackId.toString();
             const trackData = tracks.find(t => t.id.toString() === trackId);
 
             // Any other click on the card should trigger playback.
             if (trackData) {
                 const playerTrack = {
-                    id: trackData.id,
+                    id: trackData.id.toString(),
                     name: trackData.title,
                     artist: trackData.artist,
                     album: trackData.album,
@@ -150,11 +151,11 @@ async function renderDiscoverGrid(query) {
         // Add a specific listener for the new play button
         card.querySelector('.card-footer-play-btn').addEventListener('click', (e) => {
             e.stopPropagation();
-            const trackId = card.dataset.trackId;
+            const trackId = card.dataset.trackId.toString();
             const trackData = tracks.find(t => t.id.toString() === trackId);
             if (trackData) {
                 const playerTrack = {
-                    id: trackData.id,
+                    id: trackData.id.toString(),
                     name: trackData.title,
                     artist: trackData.artist,
                     album: trackData.album,
@@ -169,7 +170,7 @@ async function renderDiscoverGrid(query) {
 
         // Keep a separate, more specific listener for the download button.
         card.querySelector('[data-action="download"]').addEventListener('click', (e) => {
-            const trackId = card.dataset.trackId;
+            const trackId = card.dataset.trackId.toString();
             const trackData = tracks.find(t => t.id.toString() === trackId);
             if (trackData) {
                 config.downloadAndCacheTrack(trackData);

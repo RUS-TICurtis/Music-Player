@@ -1,13 +1,27 @@
-import * as LibraryManager from './library-manager.js';
-import * as LibraryManager from './library-manager.js';
-import * as QueueManager from './queue-manager.js';
-import * as DiscoverManager from './discover-manager.js';
-import { db } from './db.js'; // Import the new Dexie DB instance
+
+// --- Dexie DB Definition (from db.js) ---
+const db = new Dexie('genesisDB');
+db.version(5).stores({
+  tracks: `
+    id,
+    &[artist+album+title],
+    title,
+    artist,
+    album,
+    lyrics,
+    audioBlob,
+    coverBlob
+  `
+}).upgrade(tx => {
+  // Migration logic for future versions can go here.
+  // Dexie automatically handles adding new properties to existing objects.
+});
 
 // --- Shared Context & State ---
 // This object will hold state and functions to be shared across the module scope
 const playerContext = {
     libraryTracks: [],
+    discoverTracks: [], // For tracks from APIs like Jamendo
     trackQueue: [],
     currentTrackIndex: -1,
     isPlaying: false,
@@ -26,6 +40,7 @@ const PLAYLISTS_KEY = 'genesis_playlists';
 let playlists = {};
 const PLAYBACK_STATE_KEY = 'genesis_playback_state';
 
+document.addEventListener('DOMContentLoaded', function() {
     // --- DOM Elements ---
     const audioPlayer = document.getElementById('audio-player');
     const playBtn = document.getElementById('play-btn');
@@ -34,14 +49,11 @@ const PLAYBACK_STATE_KEY = 'genesis_playback_state';
     const nextBtn = document.getElementById('next-btn');
     const shuffleBtn = document.getElementById('shuffle-btn');
     const repeatBtn = document.getElementById('repeat-btn');
-    
     const progressBarContainer = document.getElementById('progress-container');
     const progressFill = document.getElementById('progress-fill');
     const currentTimeEl = document.getElementById('current-time');
     const durationEl = document.getElementById('duration');
-    
     const progressHead = document.getElementById('progress-head');
-    
     const volumeSlider = document.getElementById('volume-slider');
     const volumeBtn = document.getElementById('volume-btn');
     const volumePopup = document.getElementById('volume-popup');
@@ -52,54 +64,45 @@ const PLAYBACK_STATE_KEY = 'genesis_playback_state';
     const artistName = document.getElementById('artist-name');
     const queueList = document.getElementById('queue-list');
     const recentMediaGrid = document.getElementById('recent-media-grid');
+    const discoverGrid = document.getElementById('discover-grid');
     const libraryGrid = document.getElementById('library-grid');
-    // Playlist View Elements
     const albumsContent = document.querySelector('#albums-section .albums-content');
     const albumsSection = document.getElementById('albums-section');
     const artistsContent = document.querySelector('#artists-section .artists-content');
     const playlistsListContainer = document.getElementById('playlists-section');
     const playlistsList = document.getElementById('playlists-list');
     const playlistDetailView = document.getElementById('playlist-detail-view');
-    
-    // Navigation & Menu
     const menuItems = document.querySelectorAll('.menu-item');
     const bottomNavItems = document.querySelectorAll('.bottom-nav .nav-item');
     const mainSections = document.querySelectorAll('.main-section');
-    
     const openMenuBtn = document.getElementById('open-menu-btn');
     const openMenuDropdown = document.getElementById('open-menu-dropdown');
     const openFilesOption = document.getElementById('open-files-option');
     const openFolderOption = document.getElementById('open-folder-option');
     const openUrlOption = document.getElementById('open-url-option');
     const fileInput = document.getElementById('file-input');
+    const discoverSearchInput = document.getElementById('discover-search-input');
+    const discoverSearchBtn = document.getElementById('discover-search-btn');
     const folderInput = document.getElementById('folder-input');
     const searchInput = document.getElementById('search-input');
-    
     const profilePicInput = document.getElementById('profile-pic-input');
     const profilePic = document.getElementById('profile-pic');
-
-    // Modals
     const urlModal = document.getElementById('url-modal');
     const urlInput = document.getElementById('url-input');
     const urlLoadBtn = document.getElementById('url-load-btn');
     const urlCancelBtn = document.getElementById('url-cancel-btn');
-    
     const msgModal = document.getElementById('message-modal');
     const msgText = document.getElementById('modal-text');
     const msgCloseBtn = document.getElementById('msg-close-btn');
-
     const addToPlaylistModal = document.getElementById('add-to-playlist-modal');
     const playlistSelectionList = document.getElementById('playlist-selection-list');
     const playlistModalCancelBtn = document.getElementById('playlist-modal-cancel-btn');
     const playlistModalNewBtn = document.getElementById('playlist-modal-new-btn');
-
-    // Confirmation Modal
     const confirmModal = document.getElementById('confirm-modal');
     const confirmModalTitle = document.getElementById('confirm-modal-title');
     const confirmModalText = document.getElementById('confirm-modal-text');
     const confirmOkBtn = document.getElementById('confirm-ok-btn');
     const confirmCancelBtn = document.getElementById('confirm-cancel-btn');
-
     const editModal = document.getElementById('edit-modal');
     const editTrackIdInput = document.getElementById('edit-track-id');
     const editTitleInput = document.getElementById('edit-title-input');
@@ -108,23 +111,16 @@ const PLAYBACK_STATE_KEY = 'genesis_playback_state';
     const editLyricsInput = document.getElementById('edit-lyrics-input');
     const editSaveBtn = document.getElementById('edit-save-btn');
     const editCancelBtn = document.getElementById('edit-cancel-btn');
-
     const albumDetailView = document.getElementById('album-detail-view');
     const artistDetailView = document.getElementById('artist-detail-view');
-
-    // Library View Toggles
     const libraryGridViewBtn = document.getElementById('library-grid-view-btn');
     const libraryListViewBtn = document.getElementById('library-list-view-btn');
     const libraryPlayAllBtn = document.getElementById('library-play-all-btn');
-
-    // Selection Bar
     const selectionBar = document.getElementById('selection-action-bar');
     const selectionCount = document.getElementById('selection-count');
     const selectionAddToPlaylistBtn = document.getElementById('selection-add-to-playlist-btn');
     const selectionRemoveBtn = document.getElementById('selection-remove-btn');
     const selectionClearBtn = document.getElementById('selection-clear-btn');
-
-    // Extended Info Panel
     const mainContent = document.querySelector('.main-content');
     const extendedInfoPanel = document.getElementById('extended-info-panel');
     const closeExtendedPanelBtn = document.getElementById('close-extended-panel-btn');
@@ -132,12 +128,10 @@ const PLAYBACK_STATE_KEY = 'genesis_playback_state';
     const extendedInfoArt = document.getElementById('extended-info-art');
     const extendedInfoTitle = document.getElementById('extended-info-title');
     const extendedInfoArtist = document.getElementById('extended-info-artist');
-
     const lyricsContainer = document.getElementById('lyrics-container');
     let currentLyricIndex = -1; // For tracking synchronized lyrics
     let openContextMenu = null; // To hold the currently open context menu element
 
-document.addEventListener('DOMContentLoaded', function() {
     // Assign state arrays to the context
     let libraryTracks = playerContext.libraryTracks;
     let trackQueue = playerContext.trackQueue;
@@ -162,12 +156,12 @@ document.addEventListener('DOMContentLoaded', function() {
         const state = {
             trackId: playerContext.trackQueue[playerContext.currentTrackIndex].id, // Save by ID for robustness
             currentTime: audioPlayer.currentTime,
-            volume: audioPlayer.volume, // isPlaying is not saved, to prevent auto-play on refresh
+            volume: audioPlayer.volume,
             isShuffled: playerContext.isShuffled,
-            repeatState: repeatState,
+            repeatState: playerContext.repeatState,
             // isPlaying is not saved, to prevent auto-play on refresh
         };
-        localStorage.setItem(PLAYBACK_STATE_KEY, JSON.stringify(state)); // `repeatState` is not defined here. This will be fixed in playback-manager.
+        localStorage.setItem(PLAYBACK_STATE_KEY, JSON.stringify(state));
     }
 
     async function restoreSession() {
@@ -178,19 +172,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 const restorationPromises = storedTracks.map(async (track) => {
                     let trackData = { ...track, objectURL: null };
 
-                    if (track.isURL) {
-                        trackData.objectURL = track.url;
-                    } else {
-                        // The audioBlob is already part of the track object from Dexie
-                        if (track.audioBlob) {
-                            trackData.objectURL = URL.createObjectURL(track.audioBlob);
-                        }
-                        // **THE FIX**: Create a fresh objectURL for the cover art from its blob
+                    if (track.audioBlob) {
+                        trackData.objectURL = URL.createObjectURL(track.audioBlob);
+                        // Create a fresh objectURL for the cover art from its blob
                         if (track.coverBlob) {
                             trackData.coverURL = URL.createObjectURL(track.coverBlob);
-                        } else if (track.albumArtUrl) {
-                            // For discovered tracks that haven't been downloaded, use the permanent URL
-                            trackData.coverURL = track.albumArtUrl;
                         }
                     }
 
@@ -227,7 +213,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             };
 
                             updatePlaybackBar(track);
-                            QueueManager.renderQueueTable();
+                            renderQueueTable();
 
                             // Restore controls state
                             audioPlayer.volume = volume;
@@ -252,97 +238,16 @@ document.addEventListener('DOMContentLoaded', function() {
         if (savedPic && profilePic) profilePic.src = savedPic;
     }
 
-    // Initialize the Library Manager
-    LibraryManager.init({
-        getDB: () => db, // Pass Dexie instance
-        saveTrackToDB: (track) => db.tracks.put(track), // Use 'put' to add or update
-        deleteTrackFromDB: (id) => db.tracks.delete(id), // Corrected
-        showMessage: showMessage,
-        getLibrary: () => playerContext.libraryTracks,
-        setLibrary: (newLibrary) => { playerContext.libraryTracks = newLibrary; },
-        onLibraryUpdate: () => {
-            renderHomeGrid();
-            renderLibraryGrid();
-            renderArtistsGrid();
-            renderAlbumsGrid();
-        }
-    });
-
-    // Initialize Queue and Discover Managers
-    QueueManager.init({
-        playerContext,
-        queueList,
-        queueHeaderTitle: document.getElementById('queue-header-title'),
-        queueClearBtn: document.getElementById('queue-clear-btn'),
-        queueSavePlaylistBtn: document.getElementById('queue-save-playlist-btn'),
-        showMessage: showMessage,
-        showConfirmation: showConfirmation,
-        formatTime: formatTime,
-        loadTrack: loadTrack, // For playing from queue
-        renderTrackContextMenu: renderTrackContextMenu,
-        createPlaylist: createPlaylist, // Pass specific functions
-        addTrackToPlaylist: addTrackToPlaylist,
-        refreshPlaylists: refresh,
-    });
-
-    DiscoverManager.init({
-        discoverContent: document.querySelector('#discover-section .discover-content'), // Corrected selector
-        showMessage,
-        startPlayback: startPlayback, // For streaming
-        downloadAndCacheTrack: downloadAndCacheTrack, // For caching
-    });
-
-    /**
-     * Downloads a track from the Discover section and adds it to the library.
-     * @param {object} track - The track object from the Jamendo API.
-     */
-    async function downloadAndCacheTrack(track) {
-        if (!track || !track.id) {
-            showMessage('Invalid track data provided.');
-            return;
-        }
-
-        // Check if track is already in the library
-        if (playerContext.libraryTracks.some(t => t.id === track.id.toString())) {
-            showMessage(`"${track.name}" is already in your library.`);
-            return;
-        }
-
-        UIManager.showMessage(`Downloading "${track.name}"...`);
-
-        try {
-            const response = await fetch(`/download/${track.id}`);
-            if (!response.ok) throw new Error(`Server error: ${response.status}`);
-            
-            const { audioUrl, trackData } = await response.json();
-            if (!audioUrl) throw new Error('No audio URL returned from server.');
-
-            // Fetch the actual audio file as a blob
-            // We use CORS here because the audioUrl is from a different domain (jamendo.com)
-            const audioResponse = await fetch(audioUrl, { mode: 'cors' });
-            if (!audioResponse.ok) throw new Error(`Failed to fetch audio from Jamendo. Status: ${audioResponse.status}`);
-            const audioBlob = await audioResponse.blob();
-
-            // Create a File-like object to pass to handleFiles
-            // Use the original filename from Jamendo if available, otherwise construct one
-            const fileName = trackData.name ? `${trackData.name}.mp3` : `${track.id}.mp3`;
-            const audioFile = new File([audioBlob], fileName, { type: 'audio/mpeg' });
-            
-            // Use the existing file handling logic to process and save the track
-            await handleFiles([audioFile], { isFromDiscover: true, discoverData: trackData });
-            showMessage(`Successfully added "${track.name}" to your library!`);
-        } catch (error) {
-            console.error('Error downloading or caching track:', error);
-            showMessage(`Failed to add "${track.name}" to library. Please try again.`);
-        }
-    }
-
     // --- Navigation & Theme (now handled by UI Manager) ---
     applyTheme(localStorage.getItem('genesis_theme') || 'light');
     menuItems.forEach(item => item.addEventListener('click', () => switchSection(item.dataset.target)));
+    // Special handling for discover tab to fetch data on first click
+    document.querySelector('.menu-item[data-target="discover-section"]')?.addEventListener('click', () => {
+        if (playerContext.discoverTracks.length === 0) renderDiscoverGrid();
+    });
     bottomNavItems.forEach(item => item.addEventListener('click', () => switchSection(item.dataset.target)));
 
-    async function handleRemoveTrack(trackId) {
+    async function handleRemoveTrack(trackId, confirmed = false) {
         const index = playerContext.libraryTracks.findIndex(t => t.id === trackId);
         if (index === -1) return;
         
@@ -359,8 +264,6 @@ document.addEventListener('DOMContentLoaded', function() {
             if (artImg) { artImg.src = ''; artImg.classList.add('hidden'); }
             if (placeholder) placeholder.classList.remove('hidden');
         }
-
-        await LibraryManager.removeTrack(trackId);
         // Also remove from play queue if it exists there
         const queueIndex = playerContext.trackQueue.findIndex(t => t.id === trackId);
         if (queueIndex > -1) {
@@ -379,7 +282,8 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
 
-        QueueManager.renderQueueTable();
+        await removeTrack(trackId);
+        renderQueueTable();
     }
 
     function toggleTrackSelection(trackId) {
@@ -392,7 +296,11 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function clearSelection() {
-        clearSelection();
+        playerContext.selectedTrackIds.clear();
+        document.querySelectorAll('.track-select-checkbox:checked').forEach(cb => cb.checked = false);
+        document.querySelectorAll('.track-list-row.selected').forEach(row => row.classList.remove('selected'));
+        document.querySelectorAll('.recent-media-card.selected').forEach(card => card.classList.remove('selected'));
+        updateSelectionBar();
     }
 
     async function handleContextMenuAction(action, trackId, options) {
@@ -416,30 +324,23 @@ document.addEventListener('DOMContentLoaded', function() {
                 } else {
                     playerContext.trackQueue.splice(playerContext.currentTrackIndex + 1, 0, trackToPlayNext);
                 }
-                QueueManager.renderQueueTable();
-                showMessage(`"${track.name}" will play next.`);
+                renderQueueTable();
+                showMessage(`"${trackToPlayNext.title}" will play next.`);
                 break;
             case 'add-to-queue':
                 // Find the track object from the library
                 const trackToAdd = playerContext.libraryTracks.find(t => t.id === trackId);
                 if (!trackToAdd) return;
-
-                // Add to queue only if it's not already there
-                if (!playerContext.trackQueue.some(t => t.id === trackId)) {
-                    playerContext.trackQueue.push(trackToAdd);
-                }
+                
+                playerContext.trackQueue.push(trackToAdd);
 
                 // If nothing is playing, load the first track in the queue.
                 if (playerContext.currentTrackIndex === -1) loadTrack(playerContext.trackQueue.length - 1);
-                QueueManager.renderQueueTable();
-                showMessage(`Added "${track.name}" to queue.`);
+                renderQueueTable();
+                showMessage(`Added "${trackToAdd.title}" to queue.`);
                 break;
             case 'remove-from-library':
-                const confirmed = await showConfirmation(
-                    'Remove from Library',
-                    `Are you sure you want to permanently remove "<strong>${track.name}</strong>" from your library? This action cannot be undone.`
-                );
-                if (confirmed) handleRemoveTrack(trackId);
+                handleRemoveTrack(trackId); // Confirmation is now inside handleRemoveTrack
                 break;
             case 'remove-from-queue':
                 const queueIndex = playerContext.trackQueue.findIndex(t => t.id === trackId);
@@ -447,7 +348,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     playerContext.trackQueue.splice(queueIndex, 1);
                     if (queueIndex < playerContext.currentTrackIndex) playerContext.currentTrackIndex--;
                 }
-                QueueManager.renderQueueTable();
+                renderQueueTable();
                 break;
             case 'remove-from-playlist':
                 if (options.playlistId) {
@@ -457,7 +358,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
                 break;
             case 'properties':
-                showMessage(`<b>${track.name}</b><br>Artist: ${track.artist || 'N/A'}<br>Album: ${track.album || 'N/A'}<br>Duration: ${formatTime(track.duration)}`);
+                showMessage(`<b>${track.title}</b><br>Artist: ${track.artist || 'N/A'}<br>Album: ${track.album || 'N/A'}<br>Duration: ${formatTime(track.duration)}`);
                 break;
             case 'edit-info':
                 openEditModal(track);
@@ -470,26 +371,31 @@ document.addEventListener('DOMContentLoaded', function() {
         const track = playerContext.libraryTracks.find(t => t.id === trackId);
         if (!track) return;
 
-        // Update the track object in the main library
-        track.name = editTitleInput.value.trim();
-        track.artist = editArtistInput.value.trim();
-        track.album = editAlbumInput.value.trim();
-        track.lyrics = editLyricsInput.value;
+        const updatedMetadata = {
+            title: editTitleInput.value.trim(),
+            artist: editArtistInput.value.trim(),
+            album: editAlbumInput.value.trim(),
+            lyrics: editLyricsInput.value,
+        };
 
         // Re-parse lyrics in case they were changed to LRC format
-        track.syncedLyrics = parseLRC(track.lyrics);
+        const syncedLyrics = parseLRC(updatedMetadata.lyrics);
+
+        // Update the track object in the main library
+        Object.assign(track, updatedMetadata, { syncedLyrics });
 
         // Update the same track if it's in the play queue
         const queueTrack = playerContext.trackQueue.find(t => t.id === trackId);
         if (queueTrack) {
-            Object.assign(queueTrack, track);
+            // Ensure the queue track also gets all the new properties
+            Object.assign(queueTrack, updatedMetadata, { syncedLyrics });
         }
 
         // Persist changes and update UI
-        LibraryManager.saveTrackToDB(track); // Save changes to the database
+        db.tracks.put(track); // Save changes to the database
         renderHomeGrid();
         renderLibraryGrid();
-        QueueManager.renderQueueTable();
+        renderQueueTable();
         if (playerContext.currentTrackIndex > -1 && playerContext.trackQueue[playerContext.currentTrackIndex].id === trackId) {
             updatePlaybackBar(track);
         }
@@ -504,15 +410,263 @@ document.addEventListener('DOMContentLoaded', function() {
         openMenuBtn.disabled = true;
         if (!options.isFromDiscover) openMenuText.textContent = 'Processing...';
 
+        const newTracksForMemory = [];
         try {
-            await LibraryManager.handleFiles(fileList, options);
+            const isAudioFile = (file) => {
+                if (file.type.startsWith('audio/')) {
+                    return true;
+                }
+                // Fallback check for files without a proper MIME type from the OS
+                const audioExtensions = ['.mp3', '.wav', '.flac', '.aac', '.m4a', '.ogg', '.opus', '.weba'];
+                const fileName = file.name.toLowerCase();
+                return audioExtensions.some(ext => fileName.endsWith(ext));
+            };
+
+            const audioFiles = Array.from(fileList).filter(file => {
+                const isValidAudio = isAudioFile(file);
+                if (!isValidAudio) {
+                    console.warn(`Skipping non-audio file: ${file.name} (type: ${file.type})`);
+                    return false;
+                }
+                return true;
+            });
+
+            // Use a single transaction for batch processing for performance and atomicity
+            await db.transaction('rw', db.tracks, async () => {
+                for (const file of audioFiles) {
+                    try {
+                        const metadata = await extractMetadata(file);
+                        if (metadata) {
+                            const trackForDB = {
+                                ...metadata,
+                                audioBlob: file,
+                                // coverBlob is already in metadata
+                            };
+
+                            // Use 'put' which will add or update based on the primary key.
+                            // Because of our new compound index, this will prevent duplicates.
+                            await db.tracks.put(trackForDB);
+
+                            // Create a version for the in-memory library with usable object URLs
+                            const trackForMemory = { ...trackForDB, objectURL: URL.createObjectURL(file) };
+                            if (trackForMemory.coverBlob) {
+                                trackForMemory.coverURL = URL.createObjectURL(trackForMemory.coverBlob);
+                            }
+                            newTracksForMemory.push(trackForMemory);
+                        }
+                    } catch (err) {
+                        // Dexie's ConstraintError will be caught here if a duplicate is found
+                        if (err.name === 'ConstraintError') {
+                            console.warn(`Skipping duplicate track: ${file.name}`);
+                        } else {
+                            console.error(`Failed to process file: ${file.name}`, err);
+                        }
+                    }
+                }
+            });
+
+            if (newTracksForMemory.length > 0) {
+                playerContext.libraryTracks.push(...newTracksForMemory);
+                const totalFiles = audioFiles.length;
+                const successCount = newTracksForMemory.length;
+                const failCount = totalFiles - successCount;
+                let message = `Added ${successCount} new track(s).`;
+                if (failCount > 0) {
+                    message += ` ${failCount} file(s) failed to process.`;
+                }
+                showMessage(message);
+                renderHomeGrid();
+                renderLibraryGrid();
+                renderArtistsGrid();
+                renderAlbumsGrid();
+            } else {
+                showMessage("No new valid audio files were added.");
+            }
         } catch (error) {
             console.error("Error handling files:", error);
+            showMessage("An unexpected error occurred while adding files.");
         } finally {
             openMenuBtn.disabled = false;
             openMenuText.textContent = originalText;
         }
     }
+
+// =======================================================
+    // --- MISSING FUNCTIONS FIX (Paste this into script.js) ---
+    // =======================================================
+
+    /**
+     * Extracts metadata (title, artist, album, art) from an audio file.
+     * Uses the 'music-metadata-browser' library included in your HTML.
+     */
+    async function extractMetadata(file) {
+        let metadata = {
+            id: file.name + '-' + file.lastModified, // Create a more stable but non-guaranteed ID
+            title: file.name.replace(/\.[^/.]+$/, ""), // Default to filename without extension
+            artist: 'Unknown Artist',
+            album: 'Unknown Album',
+            lyrics: null,
+            duration: 0,
+            coverBlob: null
+        };
+
+        try {
+            // Ensure the library is loaded
+            if (window.musicMetadata) {
+                const result = await window.musicMetadata.parseBlob(file);
+                const { common, format } = result;
+
+                if (common.title) metadata.title = common.title;
+                if (common.artist) metadata.artist = common.artist;
+                if (common.album) metadata.album = common.album;
+                if (format.duration) metadata.duration = format.duration;
+                if (common.lyrics) metadata.lyrics = common.lyrics.toString();
+
+                // Extract Album Art
+                if (common.picture && common.picture.length > 0) {
+                    const picture = common.picture[0];
+                    metadata.coverBlob = new Blob([picture.data], { type: picture.format });
+                }
+            }
+        } catch (error) {
+            console.error(`Metadata extraction failed for ${file.name}.`, error);
+            return null; // Return null on critical failure to indicate an invalid file
+        }
+
+        return metadata;
+    }
+
+    /**
+     * Renders the current play queue into the visual table.
+     */
+    function renderQueueTable() {
+        if (!queueList) return;
+        
+        // Update the header count if you want (optional)
+        const headerTitle = document.getElementById('queue-header-title');
+        if(headerTitle) headerTitle.textContent = `Play Queue (${playerContext.trackQueue.length})`;
+
+        if (playerContext.trackQueue.length === 0) {
+            queueList.innerHTML = '<div class="empty-state">Queue is empty</div>';
+            return;
+        }
+
+        queueList.innerHTML = playerContext.trackQueue.map((track, index) => {
+            const isPlaying = index === playerContext.currentTrackIndex;
+            const duration = formatTime(track.duration);
+            const activeClass = isPlaying ? 'active' : '';
+            
+            // Handle Album Art display
+            let imgTag = `<div class="placeholder-icon"><i class="fas fa-music"></i></div>`;
+            if (track.coverURL) {
+                imgTag = `<img src="${track.coverURL}" alt="Art">`;
+            }
+
+            return `
+            <div class="queue-item ${activeClass}" draggable="true" data-index="${index}">
+                <div class="queue-item-art">${imgTag}</div>
+                <div class="queue-item-details">
+                    <span class="col-title" style="font-weight:600; ${isPlaying ? 'color:var(--primary-color);' : ''}">${track.title}</span>
+                    <span class="col-artist" style="font-size:12px; color:var(--text-color);">${track.artist || 'Unknown'}</span>
+                </div>
+                <div class="col-duration">${duration}</div>
+                <div class="col-actions">
+                    <button class="control-btn small remove-queue-btn" title="Remove from Queue"><i class="fas fa-times"></i></button>
+                </div>
+            </div>
+            `;
+        }).join('');
+
+        // Add Event Listeners for Queue Items (Click to Play & Remove)
+        queueList.querySelectorAll('.queue-item').forEach(item => {
+            const index = parseInt(item.dataset.index);
+            
+            item.addEventListener('click', (e) => {
+                if (e.target.closest('.remove-queue-btn')) return; // Ignore if clicking remove
+                loadTrack(index);
+            });
+
+            item.querySelector('.remove-queue-btn').addEventListener('click', (e) => {
+                e.stopPropagation();
+                removeFromQueue(index);
+            });
+        });
+        
+        // Scroll active track into view
+        const activeItem = queueList.querySelector('.queue-item.active');
+        if (activeItem) {
+            activeItem.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+    }
+
+    function removeFromQueue(index) {
+        playerContext.trackQueue.splice(index, 1);
+        // Adjust current index if necessary
+        if (index < playerContext.currentTrackIndex) {
+            playerContext.currentTrackIndex--;
+        } else if (index === playerContext.currentTrackIndex) {
+            // If we removed the playing track, try to play the next one or stop
+            if (playerContext.trackQueue.length > 0) {
+                // Determine new index (ensure it doesn't overflow)
+                let newIndex = index;
+                if(newIndex >= playerContext.trackQueue.length) newIndex = 0;
+                loadTrack(newIndex, false); // Don't auto play, just load
+            } else {
+                playerContext.currentTrackIndex = -1;
+                updatePlaybackBar(null);
+            }
+        }
+        renderQueueTable();
+    }
+
+    /**
+     * Helper to get track data for Detailed Views (Playlists/Albums).
+     */
+    async function getTrackDetailsFromId(id) {
+        // 1. Check Memory (fastest)
+        let track = playerContext.libraryTracks.find(t => t.id === id);
+        if (track) return track;
+
+        // 2. Check Database (if not in current memory snapshot)
+        track = await db.tracks.get(id);
+        return track || { title: 'Unknown Track', duration: 0 };
+    }
+
+    /**
+     * Remove a track permanently from DB and Library.
+     */
+    async function removeTrack(id) {
+        // Remove from DB
+        await db.tracks.delete(id);
+        
+        // Remove from Memory
+        const index = playerContext.libraryTracks.findIndex(t => t.id === id);
+        if (index > -1) {
+            playerContext.libraryTracks.splice(index, 1);
+        }
+
+        // Clean up Playlists that might contain this track
+        const playlistIds = Object.keys(playlists);
+        let playlistsChanged = false;
+        playlistIds.forEach(pId => {
+            const p = playlists[pId];
+            if (p.trackIds.includes(id)) {
+                p.trackIds = p.trackIds.filter(tid => tid !== id);
+                playlistsChanged = true;
+            }
+        });
+        if (playlistsChanged) savePlaylists();
+
+        // Refresh UIs
+        renderHomeGrid();
+        renderLibraryGrid();
+        renderArtistsGrid();
+        renderAlbumsGrid();
+    }
+
+    // =======================================================
+    // --- END OF FIXES ---
+    // =======================================================
 
     // --- Event Listeners ---
     openMenuBtn.addEventListener('click', (e) => {
@@ -544,6 +698,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const newTrack = {
             id: Date.now().toString(), // URL tracks don't need persistent IDs
             name: url.split('/').pop() || "Stream",
+            title: url.split('/').pop() || "Stream",
             duration: 0, 
             isURL: true,
             objectURL: url,
@@ -556,6 +711,28 @@ document.addEventListener('DOMContentLoaded', function() {
         urlModal.classList.add('hidden');
         urlInput.value = '';
         // Do not auto-play
+    });
+
+    // --- Drag and Drop File Handling ---
+    document.addEventListener('dragover', (e) => {
+        e.preventDefault(); // Prevent default behavior (opening file in browser)
+        e.stopPropagation();
+        // Optional: Add a class to the body to show a visual indicator
+        document.body.classList.add('dragover');
+    });
+    document.addEventListener('dragleave', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        document.body.classList.remove('dragover');
+    });
+    document.addEventListener('drop', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        document.body.classList.remove('dragover');
+        const files = e.dataTransfer.files;
+        if (files.length > 0) {
+            handleFiles(files, {});
+        }
     });
 
     // Profile Picture Handling
@@ -768,12 +945,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Initialize
     restoreSession();
-    fetchAndRenderDiscover(); // Fetch popular tracks on initial load
+    renderDiscoverGrid(); // Initial fetch for discover page
+    // Discover functionality removed
 
     const searchDropdown = document.getElementById('search-dropdown');
-
-    const sidebarPlaylistsContainer = document.getElementById('sidebar-playlists');
-    sidebarPlaylistsContainer.addEventListener('click', (e) => switchSection('queue-view-section'))
 
     let highlightedSearchIndex = -1;
 
@@ -795,10 +970,11 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
 
-        const results = playerContext.trackQueue
-            .map((t, idx) => ({ t, idx }))
-            .filter(({ t }) => t.name.toLowerCase().includes(query))
-            .slice(0, 8);
+        const results = playerContext.libraryTracks
+            .filter(track => 
+                (track.title && track.title.toLowerCase().includes(query)) || 
+                (track.artist && track.artist.toLowerCase().includes(query)))
+            .slice(0, 10);
 
         if (results.length === 0) {
             searchDropdown.innerHTML = `<div class="no-results">No results found for "${query}"</div>`;
@@ -807,13 +983,13 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
 
-        searchDropdown.innerHTML = results.map(({ t, idx }) => {
-            const duration = t.duration ? formatTime(t.duration) : '';
-            const icon = t.isURL ? '<i class="fas fa-globe"></i>' : '<i class="fas fa-music"></i>';
+        searchDropdown.innerHTML = results.map(track => {
+            const duration = track.duration ? formatTime(track.duration) : '';
+            const icon = track.isURL ? '<i class="fas fa-globe"></i>' : '<i class="fas fa-music"></i>';
             return `
-                <div class="result-item" data-idx="${idx}" role="option">
+                <div class="result-item" data-track-id="${track.id}" role="option">
                     ${icon}
-                    <div class="label">${t.name}</div>
+                    <div class="label">${track.title} <span class="search-artist-label">- ${track.artist || 'Unknown'}</span></div>
                     <div class="meta">${duration}</div>
                 </div>
             `;
@@ -824,14 +1000,10 @@ document.addEventListener('DOMContentLoaded', function() {
         // Attach click handlers for results
         searchDropdown.querySelectorAll('.result-item').forEach(el => {
             el.addEventListener('click', (e) => {
-                const idx = parseInt(el.dataset.idx, 10);
-                if (!isNaN(idx) && playerContext.trackQueue[idx]?.objectURL) {
-                    PlaybackManager.loadTrack(idx);
-                    searchDropdown.classList.add('hidden');
-                    renderQueueTable();
-                } else {
-                    showMessage('Selected track is not available. Re-open the file.');
-                }
+                const trackId = el.dataset.trackId;
+                startPlayback([trackId]);
+                searchDropdown.classList.add('hidden');
+                searchInput.value = '';
             });
         });
 
@@ -904,6 +1076,95 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
+    // Add event listener for the discover search input
+    if (discoverSearchInput) {
+        const performDiscoverSearch = () => {
+            const query = discoverSearchInput.value.trim();
+            // Re-render the grid with the new search query.
+            // An empty query will fetch popular tracks again.
+            renderDiscoverGrid(query);
+        };
+
+        discoverSearchBtn.addEventListener('click', performDiscoverSearch);
+        discoverSearchInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                performDiscoverSearch();
+            }
+        });
+    }
+
+    // ===================================
+    // 5. Jamendo Discover Feature
+    // ===================================
+
+    async function fetchJamendoTracks(query = '') {
+        // Call our own server's proxy endpoint
+        const url = query ? `/api/discover?search=${encodeURIComponent(query)}` : '/api/discover';
+
+        try {
+            const response = await fetch(url);
+            if (!response.ok) {
+                throw new Error(`Jamendo API request failed with status ${response.status}`);
+            }
+            const data = await response.json();
+            
+            // Map Jamendo track data to our application's track format and store it
+            playerContext.discoverTracks = data.results.map(track => ({
+                id: `jamendo-${track.id}`, // Unique ID for discover tracks
+                title: track.name,
+                artist: track.artist_name,
+                album: track.album_name,
+                duration: track.duration,
+                coverURL: track.image.replace('width=200', 'width=400'), // Get a larger image
+                objectURL: track.audio, // This is the streamable URL
+                isURL: true,
+                isFromDiscover: true // Custom flag
+            }));
+
+            return playerContext.discoverTracks;
+        } catch (error) {
+            console.error("Error fetching from discover endpoint:", error);
+            if (discoverGrid) discoverGrid.innerHTML = `<div class="empty-state" style="grid-column: 1 / -1;">Could not load tracks from Jamendo. Please check your connection or API key.</div>`;
+            return [];
+        }
+    }
+
+    function renderDiscoverCards(tracks) {
+        if (!discoverGrid) return;
+
+        if (tracks.length === 0) {
+            discoverGrid.innerHTML = `<div class="empty-state" style="grid-column: 1 / -1;">No tracks found.</div>`;
+            return;
+        }
+
+        discoverGrid.innerHTML = tracks.map(track => `
+            <div class="recent-media-card" data-track-id="${track.id}" tabindex="0">
+                <div class="album-art">
+                    <img src="${track.coverURL}" alt="${track.title}">
+                </div>
+                <div class="card-footer">
+                    <button class="control-btn small card-footer-play-btn" title="Play"><i class="fas fa-play"></i></button>
+                    <h5>${track.title}</h5>
+                </div>
+            </div>
+        `).join('');
+
+        discoverGrid.querySelectorAll('.card-footer-play-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const trackId = e.currentTarget.closest('.recent-media-card').dataset.trackId;
+                startPlayback([trackId]);
+            });
+        });
+    }
+
+    async function renderDiscoverGrid(query = '') {
+        if (!discoverGrid) return;
+        const loadingMessage = query ? `Searching for "${query}"...` : 'Loading popular tracks...';
+        discoverGrid.innerHTML = `<div class="loading-spinner" style="grid-column: 1 / -1;">${loadingMessage}</div>`;
+        const tracks = await fetchJamendoTracks(query);
+        renderDiscoverCards(tracks);
+    }
+
     // ===================================
     // 4. Keyboard Shortcuts Feature
     // ===================================
@@ -926,7 +1187,7 @@ document.addEventListener('DOMContentLoaded', function() {
             
             case 'ArrowRight': // Right Arrow for Next Track
                 event.preventDefault(); 
-                if (nextBtn) PlaybackManager.nextTrack();
+                if (nextBtn) nextTrack();
                 break;
 
             case 'ArrowLeft': // Left Arrow for Previous Track
@@ -965,7 +1226,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     if (libraryPlayAllBtn) {
         libraryPlayAllBtn.addEventListener('click', () => {
-            const sortedTracks = [...playerContext.libraryTracks].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+            const sortedTracks = [...playerContext.libraryTracks].sort((a, b) => (a.title || '').localeCompare(b.title || ''));
             if (sortedTracks.length > 0) {
                 // Use the sorted list of tracks to ensure playback matches the displayed order.
                 const trackIds = sortedTracks.map(t => t.id);
@@ -1042,11 +1303,11 @@ document.addEventListener('DOMContentLoaded', function() {
         recentMediaGrid.innerHTML = recentTracks.map(track => `
             <div class="recent-media-card" data-track-id="${track.id}" tabindex="0">
                 <div class="album-art">
-                    ${track.coverURL ? `<img src="${track.coverURL}" alt="${track.name}">` : `<div class="placeholder-icon"><i class="fas fa-music"></i></div>`}
+                    ${track.coverURL ? `<img src="${track.coverURL}" alt="${track.title}">` : `<div class="placeholder-icon"><i class="fas fa-music"></i></div>`}
                 </div>
                 <div class="card-footer">
                     <button class="control-btn small card-footer-play-btn" title="Play"><i class="fas fa-play"></i></button>
-                    <h5>${track.name || 'Unknown Title'}</h5>
+                    <h5>${track.title || 'Unknown Title'}</h5>
                     <button class="control-btn small track-action-btn" title="More options"><i class="fas fa-ellipsis-v"></i></button>
                 </div>
             </div>
@@ -1071,7 +1332,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     function renderLibraryGrid() {
         if (!libraryGrid) return;
-        const sortedTracks = [...playerContext.libraryTracks].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+        const sortedTracks = [...playerContext.libraryTracks].sort((a, b) => (a.title || '').localeCompare(b.title || ''));
 
         if (sortedTracks.length === 0) {
             libraryGrid.innerHTML = `<div class="empty-state" style="grid-column: 1 / -1;">Your library is empty. Open some files to get started.</div>`;
@@ -1081,11 +1342,11 @@ document.addEventListener('DOMContentLoaded', function() {
         libraryGrid.innerHTML = sortedTracks.map(track => `
             <div class="recent-media-card" data-track-id="${track.id}" tabindex="0">
                 <div class="album-art">
-                    ${track.coverURL ? `<img src="${track.coverURL}" alt="${track.name}">` : `<div class="placeholder-icon"><i class="fas fa-music"></i></div>`}
+                    ${track.coverURL ? `<img src="${track.coverURL}" alt="${track.title}">` : `<div class="placeholder-icon"><i class="fas fa-music"></i></div>`}
                 </div>
                 <div class="card-footer">
                     <button class="control-btn small card-footer-play-btn" title="Play"><i class="fas fa-play"></i></button>
-                    <h5>${track.name || 'Unknown Title'}</h5>
+                    <h5>${track.title || 'Unknown Title'}</h5>
                     <button class="control-btn small track-action-btn" title="More options"><i class="fas fa-ellipsis-v"></i></button>
                 </div>
             </div>
@@ -1125,8 +1386,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 row.innerHTML = `
                     <button class="control-btn small row-play-btn" title="Play"><i class="fas fa-play"></i></button>
                     <input type="checkbox" class="track-select-checkbox" data-id="${trackId}">
-                    <span class="track-num">${index + 1}</span>
-                    <span class="track-title">${trackData.name || 'Unknown Title'}</span>
+                    <span class="track-title">${trackData.title || 'Unknown Title'}</span>
                     <span class="track-album">${secondaryInfo}</span>
                     <span class="track-duration">${formatTime(trackData.duration)}</span>
                     <button class="control-btn small track-action-btn" title="More options"><i class="fas fa-ellipsis-v"></i></button>
@@ -1170,7 +1430,7 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
 
-        songTitle.textContent = track.name || 'Unknown Title';
+        songTitle.textContent = track.title || 'Unknown Title';
         artistName.textContent = track.artist || (track.isURL ? 'Web Stream' : 'Unknown Artist');
 
         if (track.coverURL) {
@@ -1194,7 +1454,7 @@ document.addEventListener('DOMContentLoaded', function() {
         extendedInfoArt.innerHTML = track.coverURL
             ? `<img src="${track.coverURL}" alt="Album Art">`
             : `<div class="placeholder-icon"><i class="fas fa-music"></i></div>`;
-        extendedInfoTitle.textContent = track.name || 'Unknown Title';
+        extendedInfoTitle.textContent = track.title || 'Unknown Title';
         extendedInfoArtist.textContent = track.artist || 'Unknown Artist';
 
         currentLyricIndex = -1;
@@ -1379,7 +1639,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     function openEditModal(track) {
         editTrackIdInput.value = track.id;
-        editTitleInput.value = track.name || '';
+        editTitleInput.value = track.title || '';
         editArtistInput.value = track.artist || '';
         editAlbumInput.value = track.album || '';
         editLyricsInput.value = track.lyrics || '';
@@ -1477,8 +1737,6 @@ document.addEventListener('DOMContentLoaded', function() {
         localStorage.setItem('genesis_library_view', view);
     }
 
-}); // close DOMContentLoaded listener
-// --- Functions for other modules ---
 
 // --- Album and Artist Functions (from album-manager.js and artist-manager.js) ---
 
@@ -1666,95 +1924,6 @@ function openArtistView(artist) {
     renderDetailTrackList(artist.trackIds, document.getElementById('artist-track-list'), { showArtist: false, showAlbum: true });
 }
 
-// --- Playback Functions (from playback-manager.js) ---
-
-function playTrack() {
-    if (!audioPlayer.src) return;
-    playerContext.isPlaying = true;
-    audioPlayer.play().catch(e => console.error("Playback failed:", e));
-    playIcon.className = 'fas fa-pause';
-    document.querySelector('.playback-bar')?.classList.add('playing');
-}
-
-function pauseTrack() {
-    audioPlayer.pause();
-    playerContext.isPlaying = false;
-    playIcon.className = 'fas fa-play';
-    document.querySelector('.playback-bar')?.classList.remove('playing');
-}
-
-function loadTrack(index, autoPlay = true) {
-    playerContext.currentTrackIndex = index;
-    const track = playerContext.trackQueue[index];
-    
-    if (track) audioPlayer.src = track.objectURL;
-    updatePlaybackBar(track);
-
-    QueueManager.renderQueueTable();
-    savePlaybackState();
-
-    if (autoPlay) {
-        const canPlayHandler = () => {
-            playTrack();
-            audioPlayer.removeEventListener('canplay', canPlayHandler);
-        };
-        audioPlayer.addEventListener('canplay', canPlayHandler);
-    }
-}
-
-function startPlayback(tracksOrIds, startIndex = 0, shuffle = false) {
-    if (!tracksOrIds || tracksOrIds.length === 0) return;
-
-    let newQueue = tracksOrIds.map(item => {
-        if (typeof item === 'string') {
-            return playerContext.libraryTracks.find(t => t.id === item);
-        } else if (typeof item === 'object' && item !== null) {
-            return item;
-        }
-    }).filter(Boolean);
-
-    if (newQueue.length === 0) {
-        showMessage("Could not load the selected track for playback.");
-        return;
-    }
-
-    if (shuffle) {
-        for (let i = newQueue.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [newQueue[i], newQueue[j]] = [newQueue[j], newQueue[i]];
-        }
-        startIndex = 0;
-    }
-
-    playerContext.trackQueue = newQueue;
-    loadTrack(startIndex);
-}
-
-function nextTrack() {
-    if (!playerContext.trackQueue || playerContext.trackQueue.length === 0) return;
-    let nextIndex = isShuffled 
-        ? Math.floor(Math.random() * playerContext.trackQueue.length) 
-        : playerContext.currentTrackIndex + 1;
-    
-    if (repeatState === 2) { // Repeat One
-        if (playerContext.currentTrackIndex !== -1) loadTrack(playerContext.currentTrackIndex, true);
-        return;
-    }
-
-    if (nextIndex >= playerContext.trackQueue.length) { // End of queue
-        if (repeatState === 1) { // Repeat All
-            nextIndex = 0;
-        } else { // No repeat
-            pauseTrack();
-            return;
-        }
-    }
-    
-    if (playerContext.trackQueue[nextIndex]?.objectURL) {
-        loadTrack(nextIndex);
-    }
-}
-
 function prevTrack() {
     if (!playerContext.trackQueue || playerContext.trackQueue.length === 0) return;
     if (audioPlayer.currentTime > 3) {
@@ -1763,55 +1932,6 @@ function prevTrack() {
     }
     const prevIndex = (playerContext.currentTrackIndex - 1 + playerContext.trackQueue.length) % playerContext.trackQueue.length;
     if (playerContext.trackQueue[prevIndex]?.objectURL) loadTrack(prevIndex);
-}
-
-function toggleShuffle() {
-    isShuffled = !isShuffled;
-    playerContext.isShuffled = isShuffled;
-    setShuffleState(isShuffled);
-    savePlaybackState();
-}
-
-function toggleRepeat() {
-    repeatState = (repeatState + 1) % 3;
-    playerContext.repeatState = repeatState;
-    updateRepeatButtonUI();
-    savePlaybackState();
-}
-
-function updateRepeatButtonUI() {
-    const repeatBtn = document.getElementById('repeat-btn');
-    repeatBtn.classList.remove('repeat-one');
-    repeatBtn.style.color = 'var(--text-color)';
-    let title = "Repeat Off";
-
-    if (repeatState === 1) { // Repeat All
-        repeatBtn.style.color = 'var(--primary-color)';
-        title = "Repeat All";
-    } else if (repeatState === 2) { // Repeat One
-        repeatBtn.style.color = 'var(--primary-color)';
-        repeatBtn.classList.add('repeat-one');
-        title = "Repeat One";
-    }
-    repeatBtn.title = title;
-}
-
-function getRepeatState() {
-    return repeatState;
-}
-
-function setRepeatState(state) {
-    repeatState = state;
-    playerContext.repeatState = state;
-}
-
-function setShuffleState(shuffle) {
-    isShuffled = shuffle;
-    playerContext.isShuffled = shuffle;
-    const shuffleBtn = document.getElementById('shuffle-btn');
-    if (shuffleBtn) {
-        shuffleBtn.style.color = isShuffled ? 'var(--primary-color)' : 'var(--text-color)';
-    }
 }
 
 // --- Playlist Functions (from playlist-manager.js) ---
@@ -2016,12 +2136,157 @@ function refresh(playlistId) {
     }
 }
 
+function playTrack() {
+    if (!audioPlayer.src) return;
+    playerContext.isPlaying = true;
+    audioPlayer.play().then(() => {
+        playIcon.className = 'fas fa-pause';
+        document.querySelector('.playback-bar')?.classList.add('playing');
+    }).catch(e => {
+        console.error("Playback failed:", e);
+        // If playback fails, revert the state
+        pauseTrack();
+    });
+}
+function pauseTrack() {
+    const audioPlayer = document.getElementById('audio-player');
+    const playIcon = document.getElementById('play-icon');
+    audioPlayer.pause();
+    playerContext.isPlaying = false;
+    playIcon.className = 'fas fa-play';
+    document.querySelector('.playback-bar')?.classList.remove('playing');
+}
+
+function loadTrack(index, autoPlay = true) {
+    const audioPlayer = document.getElementById('audio-player');
+    playerContext.currentTrackIndex = index;
+    const track = playerContext.trackQueue[index];
+    
+    if (track) audioPlayer.src = track.objectURL;
+    updatePlaybackBar(track);
+
+    renderQueueTable();
+    savePlaybackState();
+
+    if (autoPlay) {
+        const canPlayHandler = () => {
+            playTrack();
+            audioPlayer.removeEventListener('canplay', canPlayHandler);
+        };
+        audioPlayer.addEventListener('canplay', canPlayHandler);
+    }
+}
+
+function startPlayback(tracksOrIds, startIndex = 0, shuffle = false) {
+    if (!tracksOrIds || tracksOrIds.length === 0) return;
+
+    let newQueue = tracksOrIds.map(item => {
+        if (typeof item === 'string') {
+            // Find from library first, then from discover tracks
+            return playerContext.libraryTracks.find(t => t.id === item) || playerContext.discoverTracks.find(t => t.id === item);
+        }
+        return item; // It's already a full track object
+    }).filter(Boolean);
+
+    // Add discover tracks to the front of the queue without adding to library
+    const discoverTracksInQueue = newQueue.filter(t => t.isFromDiscover);
+    playerContext.trackQueue.unshift(...discoverTracksInQueue.filter(dt => !playerContext.trackQueue.some(qt => qt.id === dt.id)));
+
+    if (newQueue.length === 0) {
+        showMessage("Could not load the selected track for playback.");
+        return;
+    }
+
+    if (shuffle) {
+        for (let i = newQueue.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [newQueue[i], newQueue[j]] = [newQueue[j], newQueue[i]];
+        }
+        startIndex = 0;
+    }
+
+    playerContext.trackQueue = newQueue;
+    loadTrack(startIndex);
+}
+
+function nextTrack() {
+    if (!playerContext.trackQueue || playerContext.trackQueue.length === 0) return;
+    let nextIndex = isShuffled 
+        ? Math.floor(Math.random() * playerContext.trackQueue.length) 
+        : playerContext.currentTrackIndex + 1;
+    
+    if (repeatState === 2) { // Repeat One
+        if (playerContext.currentTrackIndex !== -1) loadTrack(playerContext.currentTrackIndex, true);
+        return;
+    }
+
+    if (nextIndex >= playerContext.trackQueue.length) { // End of queue
+        if (repeatState === 1) { // Repeat All
+            nextIndex = 0;
+        } else { // No repeat
+            pauseTrack();
+            return;
+        }
+    }
+    
+    if (playerContext.trackQueue[nextIndex]?.objectURL) {
+        loadTrack(nextIndex);
+    }
+}
+
+function toggleShuffle() {
+    isShuffled = !isShuffled;
+    playerContext.isShuffled = isShuffled;
+    setShuffleState(isShuffled);
+    savePlaybackState();
+}
+
+function toggleRepeat() {
+    repeatState = (repeatState + 1) % 3;
+    playerContext.repeatState = repeatState;
+    updateRepeatButtonUI();
+    savePlaybackState();
+}
+
+function setRepeatState(state) {
+    repeatState = state;
+    playerContext.repeatState = state;
+}
+
+function setShuffleState(shuffle) {
+    playerContext.isShuffled = shuffle;
+    const shuffleBtn = document.getElementById('shuffle-btn');
+    if (shuffleBtn) {
+        shuffleBtn.style.color = playerContext.isShuffled ? 'var(--primary-color)' : 'var(--text-color)';
+        shuffleBtn.title = playerContext.isShuffled ? "Shuffle On" : "Shuffle Off";
+    }
+}
+
+function updateRepeatButtonUI() {
+    const repeatBtn = document.getElementById('repeat-btn');
+    if (!repeatBtn) return;
+
+    repeatBtn.classList.remove('repeat-one');
+    repeatBtn.style.color = 'var(--text-color)';
+    let title = "Repeat Off";
+
+    if (playerContext.repeatState === 1) { // Repeat All
+        repeatBtn.style.color = 'var(--primary-color)';
+        title = "Repeat All";
+    } else if (playerContext.repeatState === 2) { // Repeat One
+        repeatBtn.style.color = 'var(--primary-color)';
+        repeatBtn.classList.add('repeat-one');
+        title = "Repeat One";
+    }
+    repeatBtn.title = title;
+}
+
 /**
  * Parses LRC formatted text into an array of timed lyric objects.
  * @param {string} lrcText The raw LRC string.
  * @returns {Array<{time: number, text: string}>}
  */
-export function parseLRC(lrcText) {
+function parseLRC(lrcText) {
     if (!lrcText || typeof lrcText !== 'string') return [];
 
     const lines = lrcText.split('\n');
@@ -2044,8 +2309,4 @@ export function parseLRC(lrcText) {
     return syncedLyrics.sort((a, b) => a.time - b.time);
 }
 
-/**
- * Retrieves the full track object from the library by its ID.
- * @param {string} trackId The ID of the track to find.
- * @returns {Promise<object>} A promise that resolves with the track data.
- */
+}); // close DOMContentLoaded listener
