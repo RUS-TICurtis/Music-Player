@@ -1,0 +1,273 @@
+/* Cards */
+.recent-media-card {
+    background: var(--surface-color);
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+    padding: 12px;
+    position: relative;
+    /* Keep for potential absolute elements like context menus */
+    display: flex;
+    flex-direction: column;
+}
+
+.recent-media-card .album-art {
+    width: 100%;
+    /* Let width be 100% of the card's content area */
+    aspect-ratio: 1 / 1;
+    border-radius: 6px;
+    margin-bottom: 10px;
+    overflow: hidden;
+    /* Hide any overflow from the image */
+    background-color: #f0f0f0;
+    /* Add a background for non-square images */
+}
+
+.recent-media-card .album-art img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    /* Changed to cover for a better look with various image sizes */
+}
+
+.recent-media-card .album-art img {
+    /* Prevent the image from capturing click events meant for the card */
+    pointer-events: none;
+}
+
+.placeholder-icon {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--background-gradient);
+    color: rgba(255, 255, 255, 0.7);
+    /* Prevent the icon from capturing click events meant for the parent card/row */
+    pointer-events: none;
+}
+
+.recent-media-card .card-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-top: auto;
+    /* This pushes the footer to the bottom */
+    min-width: 0;
+    /* Crucial for flexbox truncation */
+}
+
+/* Switch play to pause icon for cards when playing */
+body.is-playing .recent-media-card.currently-playing .card-footer-play-btn i::before {
+    content: "\f04c";
+    /* Font Awesome Pause Icon */
+}
+
+/* Identification: Highlight active card and make play/pause always visible for current track */
+.recent-media-card.currently-playing {
+    border: 1px solid var(--primary-color);
+    box-shadow: 0 4px 15px var(--primary-color-surface);
+}
+
+.recent-media-card.currently-playing .card-footer-play-btn {
+    opacity: 1 !important;
+    visibility: visible !important;
+}
+
+.recent-media-card h5 {
+    font-size: 14px;
+    /* Allow wrapping up to two lines */
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+    /* And this is also key for truncation */
+    margin: 0;
+}
+
+.recent-media-card .card-body {
+    padding: 8px 0;
+}
+
+.card-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+}
+
+.card-tags span {
+    font-size: 10px;
+    font-weight: 600;
+    background-color: var(--text-light);
+    color: var(--text-color);
+    padding: 3px 6px;
+    border-radius: 4px;
+}
+
+/* Playlist Card */
+.playlist-card {
+    background: var(--surface-color);
+    border-radius: 12px;
+    padding: 15px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    position: relative;
+    /* Needed for context menu positioning */
+    flex-direction: column;
+}
+
+.playlist-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+}
+
+.playlist-card-art {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    background: var(--background-gradient);
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    margin-bottom: 15px;
+    overflow: hidden;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.playlist-card-art.placeholder i {
+    font-size: 40px;
+}
+
+.playlist-card-art.single img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.playlist-card-art.grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
+}
+
+.playlist-card-art.grid img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.playlist-card .playlist-action-btn {
+    position: absolute;
+    top: 15px;
+    right: 15px;
+    color: var(--text-color);
+    background: transparent;
+    box-shadow: none;
+    opacity: 0;
+    /* Hide by default */
+}
+
+.playlist-card-name {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--dark-color);
+    margin-bottom: 8px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.playlist-card-count {
+    font-size: 14px;
+    color: var(--text-color);
+    margin-bottom: 15px;
+}
+
+.playlist-card:hover .playlist-action-btn {
+    opacity: 1;
+    /* Show on hover */
+}
+
+.playlist-card-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: auto;
+}
+
+.playlist-card-actions button {
+    flex: 1;
+    padding: 8px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+    transition: all 0.2s;
+}
+
+/* --- Album Grid Styles --- */
+.album-card,
+.artist-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: 15px;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.album-card:hover,
+.artist-card:hover {
+    background-color: var(--surface-color);
+    transform: translateY(-2px);
+}
+
+.album-art-circular {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    border-radius: 50%;
+    overflow: hidden;
+    margin-bottom: 15px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+    transition: transform 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.album-card:hover .album-art-circular,
+.artist-card:hover .album-art-circular {
+    transform: scale(1.05);
+}
+
+.album-art-circular img,
+.album-art-circular .placeholder-icon {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.album-art-circular .placeholder-icon i {
+    font-size: 40%;
+    /* Make placeholder icon relative to its container */
+}
+
+.album-name {
+    font-weight: 600;
+    color: var(--dark-color);
+    margin-bottom: 4px;
+}
+
+.album-artist {
+    font-size: 14px;
+    color: var(--text-color);
+}

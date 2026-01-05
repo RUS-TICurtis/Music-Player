@@ -1,6 +1,6 @@
 import { playerContext } from './state.js';
 import { renderDetailTrackList } from './library-manager.js';
-import { showMessage } from './ui-manager.js';
+import { showMessage, switchSection } from './ui-manager.js';
 
 let startPlaybackFn = null;
 
@@ -59,10 +59,7 @@ export function renderAlbumsGrid() {
 }
 
 export function openAlbumView(album) {
-    const albumsSection = document.getElementById('albums-section');
     const albumDetailView = document.getElementById('album-detail-view');
-    albumsSection.classList.add('hidden');
-    albumDetailView.classList.remove('hidden');
     albumDetailView.innerHTML = `
     <div class="playlist-detail-header">
         <button id="album-detail-back-btn" class="btn-secondary" style="padding: 10px 15px;"><i class="fas fa-arrow-left"></i> Back</button>
@@ -93,13 +90,29 @@ export function openAlbumView(album) {
 
     document.getElementById('album-play-all-btn').addEventListener('click', () => {
         if (startPlaybackFn) startPlaybackFn(album.trackIds, 0, false);
-        showMessage(`Playing album: ${album.name}`);
+        // showMessage(`Playing album: ${album.name}`);
     });
 
     document.getElementById('album-shuffle-btn').addEventListener('click', () => {
         if (startPlaybackFn) startPlaybackFn(album.trackIds, 0, true);
-        showMessage(`Shuffling album: ${album.name}`);
+        // showMessage(`Shuffling album: ${album.name}`);
     });
 
     renderDetailTrackList(album.trackIds, document.getElementById('album-track-list'), { showAlbum: false });
+
+    switchSection('album-detail-view', album.name);
+}
+
+export function openAlbumByName(albumName) {
+    if (!albumName) return;
+    const tracks = playerContext.libraryTracks.filter(t => t.album === albumName);
+    if (tracks.length === 0) return;
+
+    const album = {
+        name: albumName,
+        artist: tracks[0].artist || 'Unknown Artist',
+        coverURL: tracks[0].coverURL,
+        trackIds: tracks.map(t => t.id)
+    };
+    openAlbumView(album);
 }

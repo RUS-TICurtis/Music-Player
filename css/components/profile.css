@@ -1,0 +1,384 @@
+/* Profile Panel (Full-Screen Slide Down) */
+#profile-modal {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    min-height: 100%;
+    z-index: 450;
+    /* Above search bar (100), below playback bar (500) */
+    background-color: var(--surface-color);
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    /* Allow scrolling the profile content itself */
+
+    /* Animation setup */
+    transform: translateY(-100%);
+    transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+
+    /* Ensure it doesn't behave like a standard popup modal */
+    padding: 0;
+}
+
+/* When active, disable main-content scrolling from the body */
+body.section-profile-modal .main-content {
+    overflow: hidden !important;
+}
+
+/* When not hidden, it slides in */
+#profile-modal:not(.hidden) {
+    transform: translateY(0);
+}
+
+/* Ensure no backdrop/overlay from standard modal class if still present */
+#profile-modal.modal {
+    background-color: var(--surface-color);
+    align-items: stretch;
+    justify-content: flex-start;
+}
+
+.profile-modal-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+    width: 100%;
+    min-height: 100%;
+    max-width: none;
+    max-height: none;
+    border-radius: 0;
+    box-shadow: none;
+    background: transparent;
+}
+
+.modal-close-btn {
+    position: absolute;
+    top: 30px;
+    right: 40px;
+    background: rgba(0, 0, 0, 0.2);
+    border: none;
+    color: white;
+    font-size: 24px;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    cursor: pointer;
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    backdrop-filter: blur(5px);
+}
+
+.modal-close-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+    transform: rotate(90deg);
+}
+
+
+.profile-header {
+    background: linear-gradient(to bottom, #4a90e2, #2c3e50);
+    padding: 60px 30px;
+    display: flex;
+    align-items: center;
+    gap: 30px;
+    position: relative;
+    color: white;
+}
+
+.profile-header-art {
+    width: 200px;
+    height: 200px;
+    border-radius: 50%;
+    overflow: hidden;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+    flex-shrink: 0;
+}
+
+.profile-header-art img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.profile-header-info {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.profile-label {
+    font-size: 14px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    opacity: 0.9;
+}
+
+.profile-name {
+    font-size: 80px;
+    font-weight: 800;
+    margin: 0;
+    line-height: 1;
+}
+
+.profile-stats {
+    font-size: 14px;
+    opacity: 0.8;
+}
+
+.profile-actions-bar {
+    padding: 20px 30px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    background: rgba(0, 0, 0, 0.1);
+}
+
+.profile-action-icon {
+    font-size: 24px;
+    color: var(--text-color);
+    cursor: pointer;
+    opacity: 0.7;
+    transition: opacity 0.2s;
+}
+
+.profile-action-icon:hover {
+    opacity: 1;
+}
+
+.profile-body {
+    padding: 30px;
+    flex: 1;
+    overflow-y: auto;
+}
+
+.top-artists-section h3 {
+    font-size: 24px;
+    margin-bottom: 5px;
+}
+
+.section-subtitle {
+    font-size: 14px;
+    color: var(--text-light);
+    margin-bottom: 20px;
+}
+
+.top-artists-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 25px;
+}
+
+.profile-artist-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+}
+
+.profile-artist-art {
+    width: 100%;
+    aspect-ratio: 1/1;
+    border-radius: 50%;
+    overflow: hidden;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+    transition: transform 0.3s;
+}
+
+.profile-artist-card:hover .profile-artist-art {
+    transform: scale(1.05);
+}
+
+.profile-artist-art img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.profile-artist-name {
+    font-weight: 600;
+    font-size: 16px;
+}
+
+.profile-artist-label {
+    font-size: 12px;
+    color: var(--text-light);
+}
+
+/* Profile Edit Modal */
+.profile-details-modal {
+    max-width: 520px;
+    background-color: #282828;
+    /* Spotify Dark */
+    color: white;
+    padding: 24px;
+    border-radius: 8px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    position: relative;
+}
+
+.profile-details-modal h3 {
+    margin: 0;
+    font-size: 24px;
+    font-weight: 700;
+    color: white;
+}
+
+.profile-details-modal .modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 24px;
+}
+
+.close-modal-btn {
+    background: transparent;
+    border: none;
+    color: #b3b3b3;
+    font-size: 28px;
+    cursor: pointer;
+    line-height: 1;
+}
+
+.close-modal-btn:hover {
+    color: white;
+}
+
+.profile-details-body {
+    display: flex;
+    gap: 24px;
+}
+
+.profile-details-pic-side {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.large-profile-pic-container {
+    width: 180px;
+    height: 180px;
+    border-radius: 4px;
+    overflow: hidden;
+    position: relative;
+    box-shadow: 0 4px 60px rgba(0, 0, 0, .5);
+    cursor: pointer;
+}
+
+.large-profile-pic-container img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.change-pic-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.7);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.2s;
+    font-size: 14px;
+    text-align: center;
+    padding: 10px;
+}
+
+.change-pic-overlay i {
+    font-size: 40px;
+    margin-bottom: 8px;
+}
+
+.large-profile-pic-container:hover .change-pic-overlay {
+    opacity: 1;
+}
+
+.profile-details-info-side {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.profile-details-info-side .form-group {
+    margin-bottom: 16px;
+    position: relative;
+    margin-top: 10px;
+}
+
+.profile-details-info-side label {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: #b3b3b3;
+    position: absolute;
+    top: -8px;
+    left: 12px;
+    background: #282828;
+    padding: 0 4px;
+    z-index: 1;
+    opacity: 0;
+    transform: translateY(5px);
+    transition: opacity 0.2s, transform 0.2s;
+    pointer-events: none;
+}
+
+.profile-details-info-side .form-group:focus-within label {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.profile-details-info-side input {
+    width: 100%;
+    background: #3e3e3e;
+    border: 1px solid transparent;
+    padding: 12px;
+    border-radius: 4px;
+    color: white;
+    font-size: 14px;
+    outline: none;
+    transition: background 0.2s;
+}
+
+.profile-details-info-side input:focus {
+    background: #4a4a4a;
+    border-color: #535353;
+}
+
+.profile-details-footer {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: auto;
+}
+
+.profile-details-modal .save-btn {
+    background-color: white;
+    color: black;
+    border: none;
+    padding: 14px 32px;
+    border-radius: 500px;
+    font-weight: 700;
+    font-size: 16px;
+    cursor: pointer;
+    transition: transform 0.1s;
+}
+
+.profile-details-modal .save-btn:hover {
+    transform: scale(1.04);
+}
+
+.profile-details-modal .disclaimer {
+    font-size: 11px;
+    color: #b3b3b3;
+    margin-top: 16px;
+    line-height: 1.5;
+}

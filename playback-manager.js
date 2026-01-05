@@ -1,11 +1,41 @@
 import { playerContext } from './state.js';
-import { formatTime } from './utils.js';
+import { formatTime, truncate } from './utils.js';
 import { renderQueueTable } from './queue-manager.js';
-import { showMessage, elements } from './ui-manager.js';
+import { showMessage, elements, updateGlobalPlayingState } from './ui-manager.js';
 import { fetchLyricsForTrack, renderLyrics, syncLyrics, resetLyricsState } from './lyrics-manager.js';
 
 const PLAYBACK_STATE_KEY = 'genesis_playback_state';
+const HISTORY_KEY = 'genesis_play_history';
 let isDragging = false;
+
+function addToHistory(track) {
+    if (!track) return;
+    try {
+        let history = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
+        // Deduplicate: if same track played recently (e.g. within 1 min?), maybe don't add?
+        // User wants "songs played", so duplicates are okay if played at different times?
+        // Let's just prepend.
+        const entry = {
+            ...track,
+            playedAt: Date.now()
+        };
+        // We only need basic info to recreate the track object if needed, or just ID.
+        // But storing full object is safer if ID resolves to nothing later.
+
+        history.unshift(entry);
+
+        // 30 day limit
+        const limitInfoLimit = Date.now() - (30 * 24 * 60 * 60 * 1000);
+        history = history.filter(t => t.playedAt > limitInfoLimit);
+
+        // Cap at 100
+        if (history.length > 100) history = history.slice(0, 100);
+
+        localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+    } catch (e) {
+        console.error("Error saving history", e);
+    }
+}
 
 // Helpers to access DOM elements dynamically or cached
 function getAudioPlayer() { return document.getElementById('audio-player'); }
@@ -27,52 +57,67 @@ function getAlbumArtImg() { return document.getElementById('album-art-img'); }
 function getAlbumArtPlaceholder() { return document.getElementById('album-art-placeholder'); }
 
 export async function restorePlaybackState() {
-    // Default play queue to the full library if no state
-    if (playerContext.libraryTracks.length > 0) {
-        playerContext.trackQueue = [...playerContext.libraryTracks];
+    const savedState = localStorage.getItem(PLAYBACK_STATE_KEY);
+    const audioPlayer = getAudioPlayer();
+    const volumeSlider = getVolumeSlider();
 
-        const savedState = localStorage.getItem(PLAYBACK_STATE_KEY);
-        if (savedState) {
-            try {
-                const { trackId, currentTime, volume, isShuffled: savedShuffle, repeatState: savedRepeat } = JSON.parse(savedState);
-                const restoredIndex = playerContext.trackQueue.findIndex(t => t.id === trackId);
+    if (!savedState) {
+        if (playerContext.libraryTracks.length > 0) {
+            playerContext.trackQueue = [...playerContext.libraryTracks];
+            updatePlaybackBar(playerContext.libraryTracks[0]);
+        }
+        return;
+    }
 
-                const audioPlayer = getAudioPlayer();
-                const volumeSlider = getVolumeSlider();
+    try {
+        const { trackId, queueIds, currentTime, volume, isShuffled: savedShuffle, repeatState: savedRepeat } = JSON.parse(savedState);
 
-                if (restoredIndex > -1) {
-                    playerContext.currentTrackIndex = restoredIndex;
-                    const track = playerContext.trackQueue[restoredIndex];
-                    if (audioPlayer) {
-                        audioPlayer.src = track.objectURL;
-                        audioPlayer.volume = volume !== undefined ? volume : 1;
-                        // Wait for metadata
-                        const onMetadata = () => {
-                            audioPlayer.currentTime = currentTime;
-                            updateProgressBarUI(currentTime, audioPlayer.duration);
-                            audioPlayer.removeEventListener('loadedmetadata', onMetadata);
-                        };
-                        audioPlayer.addEventListener('loadedmetadata', onMetadata);
-                    }
+        // Restore Queue
+        if (queueIds && queueIds.length > 0) {
+            playerContext.trackQueue = queueIds.map(id =>
+                playerContext.libraryTracks.find(t => t.id === id) ||
+                playerContext.discoverTracks.find(t => t.id === id)
+            ).filter(Boolean);
+        }
 
-                    if (volumeSlider) volumeSlider.value = audioPlayer.volume;
+        // Fallback if queue empty
+        if (playerContext.trackQueue.length === 0 && playerContext.libraryTracks.length > 0) {
+            playerContext.trackQueue = [...playerContext.libraryTracks];
+        }
 
-                    playerContext.isShuffled = savedShuffle;
-                    setShuffleState(playerContext.isShuffled);
-                    setRepeatState(savedRepeat);
-                    updateRepeatButtonUI();
+        const restoredIndex = playerContext.trackQueue.findIndex(t => t.id === trackId);
 
-                    updatePlaybackBar(track);
-                    renderQueueTable();
-                } else {
-                    // ID not found, play first
-                    updatePlaybackBar(playerContext.libraryTracks[0]);
-                }
-            } catch (e) {
-                console.error("Error parsing saved playback state", e);
-                updatePlaybackBar(playerContext.libraryTracks[0]);
+        if (restoredIndex > -1) {
+            playerContext.currentTrackIndex = restoredIndex;
+            const track = playerContext.trackQueue[restoredIndex];
+
+            if (audioPlayer && track) {
+                audioPlayer.src = track.objectURL;
+                audioPlayer.volume = volume !== undefined ? volume : 1;
+
+                const onMetadata = () => {
+                    audioPlayer.currentTime = currentTime;
+                    updateProgressBarUI(currentTime, audioPlayer.duration);
+                    audioPlayer.removeEventListener('loadedmetadata', onMetadata);
+                };
+                audioPlayer.addEventListener('loadedmetadata', onMetadata);
             }
-        } else {
+
+            if (volumeSlider && audioPlayer) volumeSlider.value = audioPlayer.volume;
+
+            playerContext.isShuffled = savedShuffle;
+            setShuffleState(playerContext.isShuffled);
+            setRepeatState(savedRepeat || 0);
+            updateRepeatButtonUI();
+
+            updatePlaybackBar(track);
+            renderQueueTable();
+        } else if (playerContext.libraryTracks.length > 0) {
+            updatePlaybackBar(playerContext.libraryTracks[0]);
+        }
+    } catch (e) {
+        console.error("Error restoring playback state", e);
+        if (playerContext.libraryTracks.length > 0) {
             updatePlaybackBar(playerContext.libraryTracks[0]);
         }
     }
@@ -86,6 +131,7 @@ export function savePlaybackState() {
     }
     const state = {
         trackId: playerContext.trackQueue[playerContext.currentTrackIndex].id,
+        queueIds: playerContext.trackQueue.map(t => t.id),
         currentTime: audioPlayer.currentTime,
         volume: audioPlayer.volume,
         isShuffled: playerContext.isShuffled,
@@ -109,8 +155,8 @@ export function updatePlaybackBar(track) {
         return;
     }
 
-    if (songTitle) songTitle.textContent = track.title || 'Unknown Title';
-    if (artistName) artistName.textContent = track.artist || (track.isURL ? 'Web Stream' : 'Unknown Artist');
+    if (songTitle) songTitle.textContent = truncate(track.title || 'Unknown Title', 40);
+    if (artistName) artistName.textContent = truncate(track.artist || (track.isURL ? 'Web Stream' : 'Unknown Artist'), 20);
 
     if (track.coverURL) {
         if (artImg) { artImg.src = track.coverURL; artImg.classList.remove('hidden'); }
@@ -136,8 +182,8 @@ function updateExtendedInfoPanel(track) {
             ? `<img src="${track.coverURL}" alt="Album Art">`
             : `<div class="placeholder-icon"><i class="fas fa-music"></i></div>`;
     }
-    if (extendedInfoTitle) extendedInfoTitle.textContent = track.title || 'Unknown Title';
-    if (extendedInfoArtist) extendedInfoArtist.textContent = track.artist || 'Unknown Artist';
+    if (extendedInfoTitle) extendedInfoTitle.textContent = truncate(track.title || 'Unknown Title', 40);
+    if (extendedInfoArtist) extendedInfoArtist.textContent = truncate(track.artist || 'Unknown Artist', 20);
 
     // Delegate lyrics rendering to lyrics-manager
     renderLyrics(track);
@@ -178,6 +224,7 @@ export function loadTrack(index, autoPlay = true) {
     updatePlaybackBar(track);
 
     renderQueueTable();
+    updateGlobalPlayingState(track?.id);
     savePlaybackState();
 
     // Reset lyrics state on track change
@@ -189,12 +236,17 @@ export function loadTrack(index, autoPlay = true) {
             audioPlayer.removeEventListener('canplay', canPlayHandler);
         };
         audioPlayer.addEventListener('canplay', canPlayHandler);
+    } else {
+        document.body.classList.remove('is-playing');
     }
 
     // Fetch lyrics if missing
     if (!track.lyrics && !track.syncedLyrics && !track.isLyricsFetching) {
         fetchLyricsForTrack(track);
     }
+
+    // History
+    if (autoPlay) addToHistory(track);
 }
 
 export function playTrack() {
@@ -206,6 +258,7 @@ export function playTrack() {
     audioPlayer.play().then(() => {
         if (playIcon) playIcon.className = 'fas fa-pause';
         document.querySelector('.playback-bar')?.classList.add('playing');
+        document.body.classList.add('is-playing');
     }).catch(e => {
         console.error("Playback failed:", e);
         pauseTrack();
@@ -219,6 +272,7 @@ export function pauseTrack() {
     playerContext.isPlaying = false;
     if (playIcon) playIcon.className = 'fas fa-play';
     document.querySelector('.playback-bar')?.classList.remove('playing');
+    document.body.classList.remove('is-playing');
 }
 
 export function startPlayback(tracksOrIds, startIndex = 0, shuffle = false) {

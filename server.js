@@ -5,7 +5,7 @@ const cors = require('cors'); // Import the cors middleware
 require('dotenv').config();
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 1552;
 
 // Use CORS middleware to allow requests from your front-end
 app.use(cors());

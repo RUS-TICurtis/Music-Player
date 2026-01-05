@@ -2,7 +2,7 @@ import db from './db.js';
 import { playerContext } from './state.js';
 import { extractMetadata } from './metadata-extractor.js';
 import { showMessage, updateSelectionBar } from './ui-manager.js';
-import { formatTime, parseLRC } from './utils.js';
+import { formatTime, parseLRC, truncate } from './utils.js';
 
 // placeholders for dependencies to be injected or imported
 let startPlaybackFn = null;
@@ -139,7 +139,7 @@ export async function handleFiles(fileList, options = {}) {
             if (failCount > 0) {
                 message += ` ${failCount} file(s) failed to process.`;
             }
-            showMessage(message);
+            // showMessage(message);
             renderHomeGrid();
             renderLibraryGrid();
             if (window.refreshLibraryViews) window.refreshLibraryViews();
@@ -173,17 +173,236 @@ export async function handleRemoveTrack(trackId) {
 }
 
 export function renderHomeGrid() {
-    const recentMediaGrid = document.getElementById('recent-media-grid');
-    if (!recentMediaGrid) return;
-    const recentTracks = [...playerContext.libraryTracks].reverse().slice(0, 12);
+    renderSuggestions();
+    renderTopArtists();
+    renderTopAlbums();
+    renderRecentArtists();
+    renderRecentAlbums();
+    renderFavorites();
+}
 
-    if (recentTracks.length === 0) {
-        recentMediaGrid.innerHTML = `<div class="empty-state" style="grid-column: 1 / -1;">Your recent media will appear here.</div>`;
+function renderSuggestions() {
+    const container = document.getElementById('home-suggestions-container');
+    if (!container) return;
+    // Dynamic Suggestions based on Discovery
+    const suggestions = [
+        { type: 'trending', title: 'Trending Now', icon: 'fa-fire', color: 'linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%)' },
+        { type: 'pop', title: 'Pop Hits', icon: 'fa-music', color: 'linear-gradient(135deg, #a18cd1 0%, #fbc2eb 100%)' },
+        { type: 'rock', title: 'Rock Classics', icon: 'fa-guitar', color: 'linear-gradient(135deg, #29323c 0%, #485563 100%)' },
+        { type: 'new', title: 'New Arrivals', icon: 'fa-clock', color: 'linear-gradient(135deg, #84fab0 0%, #8fd3f4 100%)' }
+    ];
+
+    container.innerHTML = suggestions.map(s => `
+        <div class="suggestion-card" data-mix-type="${s.type}">
+            <div class="suggestion-card-bg" style="background: ${s.color}; height: 100%; display: flex; align-items: center; justify-content: center;">
+                <i class="fas ${s.icon}" style="font-size: 40px; color: rgba(255,255,255,0.8);"></i>
+            </div>
+            <div class="suggestion-card-overlay">
+                <span class="suggestion-card-title">${s.title}</span>
+            </div>
+        </div>
+    `).join('');
+}
+
+function renderTopArtists() {
+    const container = document.getElementById('home-top-artists-container');
+    if (!container) return;
+
+    // Get unique artists from library
+    const artists = [...new Set(playerContext.libraryTracks.map(t => t.artist).filter(Boolean))].slice(0, 6);
+
+    if (artists.length === 0) {
+        container.innerHTML = '<div style="padding:10px; color:var(--text-color);">No artists found</div>';
         return;
     }
 
-    recentMediaGrid.innerHTML = recentTracks.map(track => createCardHTML(track)).join('');
-    attachGridListeners(recentMediaGrid);
+    container.innerHTML = artists.map(artist => {
+        // Find a representative track for image
+        const track = playerContext.libraryTracks.find(t => t.artist === artist && t.coverURL);
+        const imgUrl = track ? track.coverURL : 'assets/logo-00.png';
+        return `
+            <div class="artist-circle-card" data-artist="${artist}">
+                <div class="artist-img-container">
+                    <img src="${imgUrl}" alt="${artist}" loading="lazy">
+                </div>
+                <span class="artist-name">${truncate(artist, 20)}</span>
+            </div>
+        `;
+    }).join('');
+
+    // Attach listeners
+    container.querySelectorAll('.artist-circle-card').forEach(card => {
+        card.addEventListener('click', () => {
+            import('./artist-manager.js').then(m => m.openArtistByName(card.dataset.artist));
+        });
+    });
+}
+
+function renderTopAlbums() {
+    const container = document.getElementById('home-top-albums-container');
+    if (!container) return;
+
+    // Get unique albums
+    const albums = [];
+    const seen = new Set();
+    playerContext.libraryTracks.forEach(t => {
+        if (t.album && !seen.has(t.album)) {
+            seen.add(t.album);
+            albums.push(t);
+        }
+    });
+
+    if (albums.length === 0) {
+        container.innerHTML = '<div style="padding:10px; color:var(--text-color);">No albums found</div>';
+        return;
+    }
+
+    container.innerHTML = albums.slice(0, 6).map(track => {
+        return `
+            <div class="album-square-card" data-album="${track.album}" data-artist="${track.artist || ''}">
+                <div class="album-img-wrapper">
+                    <img src="${track.coverURL || 'assets/logo-00.png'}" alt="${track.album}" loading="lazy">
+                </div>
+                <span class="card-title-text">${truncate(track.album, 20)}</span>
+                <span class="card-subtitle-text">${truncate(track.artist || 'Unknown', 20)}</span>
+            </div>
+        `;
+    }).join('');
+
+    container.querySelectorAll('.album-square-card').forEach(card => {
+        card.addEventListener('click', () => {
+            import('./album-manager.js').then(m => m.openAlbum(card.dataset.album, card.dataset.artist));
+        });
+    });
+}
+
+function renderRecentArtists() {
+    const container = document.getElementById('home-recent-artists-container');
+    if (!container) return;
+
+    // Just grab distinct artists from recent tracks (reverse order)
+    const recent = [...playerContext.libraryTracks].reverse();
+    const artists = [...new Set(recent.map(t => t.artist).filter(Boolean))].slice(0, 10);
+
+    if (artists.length === 0) {
+        container.innerHTML = '<div style="padding:10px; color:var(--text-color);">No recent artists</div>';
+        return;
+    }
+
+    container.innerHTML = artists.map(artist => {
+        const track = playerContext.libraryTracks.find(t => t.artist === artist && t.coverURL);
+        const imgUrl = track ? track.coverURL : 'assets/logo-00.png';
+        return `
+            <div class="artist-circle-card">
+                <div class="artist-img-container">
+                    <img src="${imgUrl}" alt="${artist}" loading="lazy">
+                </div>
+                <span class="artist-name">${truncate(artist, 20)}</span>
+            </div>
+        `;
+    }).join('');
+}
+
+function renderRecentAlbums() {
+    const container = document.getElementById('home-recent-albums-container');
+    if (!container) return;
+
+    // Get unique albums in reverse order of addition
+    const recent = [...playerContext.libraryTracks].reverse();
+    const albums = [];
+    const seen = new Set();
+    recent.forEach(t => {
+        if (t.album && !seen.has(t.album)) {
+            seen.add(t.album);
+            albums.push(t);
+        }
+    });
+
+    if (albums.length === 0) {
+        container.innerHTML = '<div style="padding:10px; color:var(--text-color);">No recent albums</div>';
+        return;
+    }
+
+    container.innerHTML = albums.slice(0, 10).map(track => {
+        return `
+            <div class="album-square-card">
+                <div class="album-img-wrapper">
+                    <img src="${track.coverURL || 'assets/logo-00.png'}" alt="${track.album}" loading="lazy">
+                </div>
+                <span class="card-title-text">${truncate(track.album, 20)}</span>
+                <span class="card-subtitle-text">${truncate(track.artist || 'Unknown', 20)}</span>
+            </div>
+        `;
+    }).join('');
+}
+
+function renderFavorites() {
+    const container = document.getElementById('home-favorites-container');
+    if (!container) return;
+
+    // For now, look for a playlist named 'Favorites' in localStorage since we don't have direct access here easily
+    // or just use Most Played if we had counters. 
+    // Let's use any tracks that might have been marked as favorites (if we had the UI).
+    // As a fallback, we'll show the tracks from a playlist named 'Favorites' if it exists.
+
+    let favoriteTracks = [];
+    try {
+        const storedPlaylists = JSON.parse(localStorage.getItem('genesis_playlists') || '{}');
+        const favoritesPlaylist = Object.values(storedPlaylists).find(p => p.name.toLowerCase() === 'favorites');
+        if (favoritesPlaylist && favoritesPlaylist.trackIds.length > 0) {
+            favoriteTracks = favoritesPlaylist.trackIds.map(id => playerContext.libraryTracks.find(t => t.id === id)).filter(Boolean);
+        }
+    } catch (e) {
+        console.error("Error loading favorites for home screen", e);
+    }
+
+    if (favoriteTracks.length === 0) {
+        container.innerHTML = '<div style="padding:10px; color:var(--text-color);">No favorites yet. Add some tracks to a "Favorites" playlist!</div>';
+        return;
+    }
+
+    container.innerHTML = favoriteTracks.slice(0, 10).map(track => {
+        return `
+            <div class="album-square-card" data-track-id="${track.id}">
+                <div class="album-img-wrapper">
+                    <img src="${track.coverURL || 'assets/logo-00.png'}" alt="${track.title}" loading="lazy">
+                </div>
+                <span class="card-title-text">${truncate(track.title, 40)}</span>
+                <span class="card-subtitle-text">${truncate(track.artist || 'Unknown', 20)}</span>
+            </div>
+        `;
+    }).join('');
+
+    // Attach simple click to play for these square cards
+    container.querySelectorAll('.album-square-card').forEach(card => {
+        card.addEventListener('click', () => {
+            if (startPlaybackFn) startPlaybackFn([card.dataset.trackId]);
+        });
+    });
+}
+
+export function renderFavoritesGrid() {
+    const container = document.getElementById('favorites-grid');
+    if (!container) return;
+
+    let favoriteTracks = [];
+    try {
+        const storedPlaylists = JSON.parse(localStorage.getItem('genesis_playlists') || '{}');
+        const favoritesPlaylist = Object.values(storedPlaylists).find(p => p.name.toLowerCase() === 'favorites');
+        if (favoritesPlaylist && favoritesPlaylist.trackIds.length > 0) {
+            favoriteTracks = favoritesPlaylist.trackIds.map(id => playerContext.libraryTracks.find(t => t.id === id)).filter(Boolean);
+        }
+    } catch (e) {
+        console.error("Error loading favorites grid", e);
+    }
+
+    if (favoriteTracks.length === 0) {
+        container.innerHTML = '<div class="empty-state">No favorites yet. Add some tracks to a "Favorites" playlist!</div>';
+        return;
+    }
+
+    container.innerHTML = favoriteTracks.map(track => createCardHTML(track)).join('');
+    attachGridListeners(container);
 }
 
 export function renderLibraryGrid() {
@@ -202,14 +421,14 @@ export function renderLibraryGrid() {
         // Render List View (Rows)
         libraryGrid.innerHTML = `
             <div class="track-list-header">
-                <span><input type="checkbox" id="select-all-library" title="Select All"></span>
-                <span>#</span>
+                <span class="status-icon-header"><input type="checkbox" id="select-all-library" title="Select All"></span>
+                <span class="status-icon-header">#</span>
                 <span>Title</span>
                 <span>Artist</span>
                 <span>Album</span>
                 <span>Year</span>
                 <span>Genre</span>
-                <span>Duration</span>
+                <span style="text-align: right;">Duration</span>
             </div>
             <div id="library-list-rows"></div>
         `;
@@ -240,14 +459,16 @@ export function renderLibraryGrid() {
 }
 
 function createCardHTML(track) {
+    const isCurrentlyPlaying = playerContext.currentTrack?.id === track.id;
+    const playingClass = isCurrentlyPlaying ? 'currently-playing' : '';
     return `
-        <div class="recent-media-card" data-track-id="${track.id}" tabindex="0">
+        <div class="recent-media-card ${playingClass}" data-track-id="${track.id}" tabindex="0">
             <div class="album-art">
                 ${track.coverURL ? `<img src="${track.coverURL}" alt="${track.title}">` : `<div class="placeholder-icon"><i class="fas fa-music"></i></div>`}
             </div>
             <div class="card-footer">
                 <button class="control-btn small card-footer-play-btn" title="Play"><i class="fas fa-play"></i></button>
-                <h5>${track.title || 'Unknown Title'}</h5>
+                <h5>${truncate(track.title || 'Unknown Title', 40)}</h5>
                 <button class="control-btn small track-action-btn" title="More options"><i class="fas fa-ellipsis-v"></i></button>
             </div>
         </div>
@@ -293,6 +514,24 @@ export function toggleTrackSelection(trackId) {
         playerContext.selectedTrackIds.add(trackId);
     }
     updateSelectionBar();
+    saveSelection();
+}
+
+function saveSelection() {
+    localStorage.setItem('genesis_selected_track_ids', JSON.stringify([...playerContext.selectedTrackIds]));
+}
+
+export function restoreSelection() {
+    const stored = localStorage.getItem('genesis_selected_track_ids');
+    if (stored) {
+        try {
+            const ids = JSON.parse(stored);
+            playerContext.selectedTrackIds = new Set(ids);
+            updateSelectionBar();
+        } catch (e) {
+            console.error("Error restoring selection", e);
+        }
+    }
 }
 
 export function clearSelection() {
@@ -300,40 +539,70 @@ export function clearSelection() {
     document.querySelectorAll('.track-select-checkbox:checked').forEach(cb => cb.checked = false);
     document.querySelectorAll('.track-list-row.selected').forEach(row => row.classList.remove('selected'));
     updateSelectionBar();
+    saveSelection();
 }
 
-export async function renderDetailTrackList(trackIds, container, options = {}) {
+export async function renderDetailTrackList(tracksOrIds, container, options = {}) {
     if (!container) return;
-    if (trackIds.length === 0) {
+    if (tracksOrIds.length === 0) {
         container.innerHTML = '<p style="padding: 20px;">No tracks found.</p>';
         return;
     }
 
-    const trackRows = await Promise.all(trackIds.map(async (trackId, index) => {
+    // Clear container before rendering (it was missing this clear, appending duplicates if called twice? openPlaylist removes innerHTML first so it's fine, but safer)
+    container.innerHTML = '';
+
+    const trackRows = await Promise.all(tracksOrIds.map(async (item, index) => {
         try {
-            const trackData = await getTrackDetailsFromId(trackId);
+            let trackData;
+            let trackId;
+
+            if (typeof item === 'object') {
+                trackData = item;
+                trackId = item.id;
+            } else {
+                trackId = item;
+                trackData = await getTrackDetailsFromId(trackId);
+            }
+
             const row = document.createElement('div');
-            row.className = 'track-list-row';
+            const isCurrentlyPlaying = playerContext.currentTrack?.id === trackId;
+            const isSelected = playerContext.selectedTrackIds.has(trackId);
+            const playingClass = isCurrentlyPlaying ? 'currently-playing' : '';
+            const selectedClass = isSelected ? 'selected' : '';
+
+            row.className = `track-list-row ${playingClass} ${selectedClass}`;
             row.dataset.id = trackId;
 
             row.innerHTML = `
-                <input type="checkbox" class="track-select-checkbox" data-id="${trackId}">
-                <button class="control-btn small row-play-btn" title="Play"><i class="fas fa-play"></i></button>
-                <span class="track-title">${trackData.title || 'Unknown Title'}</span>
-                <span class="track-artist">${trackData.artist || 'Unknown artist'}</span>
-                <span class="track-album">${trackData.album || 'Unknown album'}</span>
+                <div class="status-icon">
+                    <input type="checkbox" class="track-select-checkbox" data-id="${trackId}" ${isSelected ? 'checked' : ''}>
+                </div>
+                <div class="status-icon">
+                    <button class="row-play-btn"><i class="fas fa-play"></i></button>
+                    <div class="playing-bars">
+                        <div class="bar bar1"></div>
+                        <div class="bar bar2"></div>
+                        <div class="bar bar3"></div>
+                    </div>
+                    <i class="fas fa-music row-index"></i>
+                </div>
+                <div class="track-title-col">
+                    <span class="track-title">${truncate(trackData.title || 'Unknown Title', 40)}</span>
+                </div>
+                <div class="track-artist-col">
+                    <span class="track-artist">${truncate(trackData.artist || 'Unknown Artist', 20)}</span>
+                </div>
+                <span class="track-album">${truncate(trackData.album || 'Unknown album', 20)}</span>
                 <span class="track-year">${trackData.year || ''}</span>
-                <span class="track-genre">${trackData.genre || 'Unknown genre'}</span>
+                <span class="track-genre">${truncate(trackData.genre || 'Unknown genre', 20)}</span>
                 <span class="track-duration">${formatTime(trackData.duration)}</span>
             `;
 
             row.addEventListener('click', e => {
-                if (e.target.closest('.row-play-btn') || e.target.type === 'checkbox') return;
-                if (startPlaybackFn) startPlaybackFn([trackId]);
-            });
-            row.querySelector('.row-play-btn').addEventListener('click', (e) => {
-                e.stopPropagation();
-                if (startPlaybackFn) startPlaybackFn([trackId]);
+                if (e.target.type === 'checkbox') return;
+                // Pass the object if possible to ensure playback can start even if not in library
+                if (startPlaybackFn) startPlaybackFn([typeof item === 'object' ? item : trackId]);
             });
             row.querySelector('.track-select-checkbox').addEventListener('change', (e) => {
                 toggleTrackSelection(trackId);
@@ -349,4 +618,97 @@ export async function renderDetailTrackList(trackIds, container, options = {}) {
 
     container.innerHTML = '';
     trackRows.filter(Boolean).forEach(row => container.appendChild(row));
+    updateSelectionBar();
 }
+
+// Generic Full-Screen Grid Modal
+export function openSectionModal(type) {
+    let title = '';
+    let items = [];
+    let renderFn = null;
+
+    const tracks = playerContext.libraryTracks;
+
+    // Helper to filter by 30 days
+    const thirtyDaysAgo = Date.now() - (30 * 24 * 60 * 60 * 1000);
+    const recentTracks = tracks.filter(t => t.dateAdded && t.dateAdded > thirtyDaysAgo);
+
+    switch (type) {
+        case 'artists':
+            title = 'All Artists';
+            items = [...new Set(tracks.map(t => t.artist).filter(Boolean))].sort();
+            renderFn = (artist) => {
+                const track = tracks.find(t => t.artist === artist && t.coverURL);
+                const imgUrl = track ? track.coverURL : 'assets/logo-00.png';
+                return `
+                    <div class="artist-circle-card" data-artist="${artist}">
+                        <div class="artist-img-container"><img src="${imgUrl}" loading="lazy"></div>
+                        <span class="artist-name">${truncate(artist, 20)}</span>
+                    </div>`;
+            };
+            break;
+        case 'albums':
+            title = 'All Albums';
+            const albums = [];
+            const seen = new Set();
+            tracks.forEach(t => {
+                if (t.album && !seen.has(t.album)) { seen.add(t.album); albums.push(t); }
+            });
+            items = albums.sort((a, b) => a.album.localeCompare(b.album));
+            renderFn = (track) => `
+                <div class="album-square-card" data-album="${track.album}" data-artist="${track.artist}">
+                    <div class="album-img-wrapper"><img src="${track.coverURL || 'assets/logo-00.png'}" loading="lazy"></div>
+                    <span class="card-title-text">${truncate(track.album, 20)}</span>
+                    <span class="card-subtitle-text">${truncate(track.artist || '', 20)}</span>
+                </div>`;
+            break;
+    }
+
+    if (!renderFn) return;
+
+    // Create or Get Modal
+    let modal = document.getElementById('generic-grid-modal');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'generic-grid-modal';
+        modal.className = 'main-section hidden';
+        Object.assign(modal.style, {
+            position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
+            zIndex: '460', backgroundColor: 'var(--surface-color)', display: 'flex', flexDirection: 'column',
+            overflowY: 'auto'
+        });
+        document.querySelector('.main-content').appendChild(modal);
+    }
+
+    modal.innerHTML = `
+        <div class="section-header" style="padding: 20px; display: flex; align-items: center; justify-content: space-between;">
+            <div style="display:flex; align-items:center;">
+                 <button id="grid-modal-back-btn" class="btn-secondary" style="margin-right: 15px;"><i class="fas fa-arrow-left"></i></button>
+                 <h2>${title}</h2>
+            </div>
+        </div>
+        <div class="grid-modal-content" style="padding: 0 20px 20px; display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 20px;">
+            ${items.map(renderFn).join('')}
+        </div>
+    `;
+
+    modal.classList.remove('hidden');
+
+    modal.querySelector('#grid-modal-back-btn').addEventListener('click', () => {
+        modal.classList.add('hidden');
+    });
+
+    modal.querySelector('.grid-modal-content').addEventListener('click', (e) => {
+        const artistCard = e.target.closest('.artist-circle-card');
+        const albumCard = e.target.closest('.album-square-card');
+
+        if (artistCard) {
+            import('./artist-manager.js').then(m => m.openArtistByName(artistCard.dataset.artist));
+            modal.classList.add('hidden');
+        } else if (albumCard) {
+            import('./album-manager.js').then(m => m.openAlbum(albumCard.dataset.album, albumCard.dataset.artist));
+            modal.classList.add('hidden');
+        }
+    });
+}
+

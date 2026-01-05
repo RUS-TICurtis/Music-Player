@@ -1,4 +1,5 @@
 import { playerContext } from './state.js';
+import { showInputModal } from './ui-manager.js';
 
 export async function fetchLyricsForTrack(track, skipIds = [], manualMetadata = null) {
     if (!track) return;
@@ -66,12 +67,12 @@ export async function openManualLyricsSearch() {
     const track = playerContext.trackQueue[playerContext.currentTrackIndex];
     if (!track) return;
 
-    const title = prompt("Enter Song Title:", track.title);
-    if (title === null) return;
-    const artist = prompt("Enter Artist:", track.artist);
-    if (artist === null) return;
-    const album = prompt("Enter Album (Optional):", track.album || "");
-    const year = prompt("Enter Year (Optional):", track.year || "");
+    const title = await showInputModal("Manual Search", "Song Title:", track.title);
+    if (!title) return;
+    const artist = await showInputModal("Manual Search", "Artist:", track.artist);
+    if (!artist) return;
+    const album = await showInputModal("Manual Search", "Album (Optional):", track.album || "");
+    const year = await showInputModal("Manual Search", "Year (Optional):", track.year || "");
 
     track.skippedLyricsIds = []; // Clear skips for new manual search
     fetchLyricsForTrack(track, [], { title, artist, album, year });

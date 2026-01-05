@@ -1,5 +1,5 @@
 import { playerContext } from './state.js';
-import { formatTime } from './utils.js';
+import { formatTime, truncate } from './utils.js';
 
 // DOM Elements Helpers
 export const elements = {
@@ -25,11 +25,55 @@ export const elements = {
     mainContent: () => document.querySelector('.main-content'),
     searchDropdown: () => document.getElementById('search-dropdown'),
     searchInput: () => document.getElementById('search-input'),
+    inputModal: () => document.getElementById('input-modal'),
+    inputModalTitle: () => document.getElementById('input-modal-title'),
+    inputModalLabel: () => document.getElementById('input-modal-label'),
+    inputModalField: () => document.getElementById('generic-input-field'),
+    inputModalOkBtn: () => document.getElementById('input-modal-ok-btn'),
+    inputModalCancelBtn: () => document.getElementById('input-modal-cancel-btn'),
 };
 
 export function showMessage(msg) {
-    elements.msgText().innerHTML = msg;
-    elements.msgModal().classList.remove('hidden');
+    // Silence toast-like messages as requested, but we can keep the logic
+    // Or just make it do nothing if we want to remove obtrusive messages.
+    // Let's at least log it or only show critical errors.
+    console.log("Message:", msg);
+    // elements.msgText().innerHTML = msg;
+    // elements.msgModal().classList.remove('hidden');
+}
+
+export function showInputModal(title, label, initialValue = "", placeholder = "Type here...") {
+    return new Promise(resolve => {
+        const modal = elements.inputModal();
+        const titleEl = elements.inputModalTitle();
+        const labelEl = elements.inputModalLabel();
+        const field = elements.inputModalField();
+        const okBtn = elements.inputModalOkBtn();
+        const cancelBtn = elements.inputModalCancelBtn();
+
+        titleEl.textContent = title;
+        labelEl.textContent = label;
+        field.value = initialValue;
+        field.placeholder = placeholder;
+
+        modal.classList.remove('hidden');
+        field.focus();
+
+        const close = (val) => {
+            modal.classList.add('hidden');
+            okBtn.onclick = null;
+            cancelBtn.onclick = null;
+            field.onkeydown = null;
+            resolve(val);
+        };
+
+        okBtn.onclick = () => close(field.value);
+        cancelBtn.onclick = () => close(null);
+        field.onkeydown = (e) => {
+            if (e.key === 'Enter') close(field.value);
+            if (e.key === 'Escape') close(null);
+        };
+    });
 }
 
 export function showConfirmation(title, text) {
@@ -53,18 +97,33 @@ export function showConfirmation(title, text) {
     });
 }
 
-export function switchSection(targetId) {
+export function switchSection(targetId, detailId = null) {
     elements.mainSections().forEach(section => section.classList.add('hidden'));
-    elements.albumDetailView()?.classList.add('hidden');
-    elements.artistDetailView()?.classList.add('hidden');
+
+    // Also hide detail views specifically if needed
+    const detailViews = ['album-detail-view', 'artist-detail-view', 'playlist-detail-view'];
+    detailViews.forEach(id => document.getElementById(id)?.classList.add('hidden'));
 
     const target = document.getElementById(targetId);
     if (target) target.classList.remove('hidden');
+
+    // Apply body class for section-specific CSS (like FAB visibility)
+    document.body.className = document.body.className.replace(/section-\S+/g, '').trim();
+    document.body.classList.add(`section-${targetId}`);
 
     const items = [...elements.menuItems(), ...elements.bottomNavItems()];
     items.forEach(item => {
         item.classList.toggle('active', item.dataset.target === targetId);
     });
+
+    // Persist UI State
+    localStorage.setItem('genesis_active_section', targetId);
+    if (detailId) {
+        localStorage.setItem('genesis_active_detail_id', detailId);
+    } else if (!detailViews.includes(targetId)) {
+        // If switching to a main section, clear the detail ID
+        localStorage.removeItem('genesis_active_detail_id');
+    }
 }
 
 export function applyTheme(theme) {
@@ -75,6 +134,15 @@ export function applyTheme(theme) {
     } else {
         document.body.classList.remove('dark-theme');
         if (themeToggle) themeToggle.checked = false;
+    }
+}
+
+export function restoreSearch() {
+    const searchInput = elements.searchInput();
+    const lastSearch = localStorage.getItem('genesis_last_search');
+    if (lastSearch && searchInput) {
+        searchInput.value = lastSearch;
+        // Optionally trigger a search if you want results to show immediately
     }
 }
 
@@ -137,7 +205,7 @@ export function renderSearchDropdown(highlightedSearchIndex = -1) {
         return `
             <div class="result-item" data-track-id="${track.id}" role="option">
                 ${icon}
-                <div class="label">${track.title} <span class="search-artist-label">- ${track.artist || 'Unknown'}</span></div>
+                <div class="label">${truncate(track.title, 40)} <span class="search-artist-label">- ${truncate(track.artist || 'Unknown', 20)}</span></div>
                 <div class="meta">${duration}</div>
             </div>
         `;
@@ -157,5 +225,19 @@ export function updateSearchHighlight(items, highlightedSearchIndex) {
         } else {
             item.classList.remove('highlighted');
         }
+    });
+}
+
+export function updateGlobalPlayingState(trackId) {
+    // Remove from all previous
+    document.querySelectorAll('.currently-playing').forEach(el => el.classList.remove('currently-playing'));
+    if (!trackId) return;
+    // Add to all matches (rows in lists/queue and cards in home/discover)
+    const selectors = [
+        `.track-list-row[data-id="${trackId}"]`,
+        `.recent-media-card[data-track-id="${trackId}"]`
+    ];
+    document.querySelectorAll(selectors.join(',')).forEach(el => {
+        el.classList.add('currently-playing');
     });
 }

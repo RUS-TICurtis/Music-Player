@@ -1,5 +1,5 @@
 import { playerContext } from './state.js';
-import { formatTime } from './utils.js';
+import { formatTime, truncate } from './utils.js';
 
 let actions = {
     onPlay: null,
@@ -30,14 +30,28 @@ export function renderQueueTable() {
         const activeClass = isPlaying ? 'active' : '';
 
         return `
-        <div class="track-list-row queue-item ${activeClass}" draggable="true" data-index="${index}">
-            <input type="checkbox" class="track-select-checkbox" disabled>
-            <button class="control-btn small row-play-btn" title="Play"><i class="fas fa-${isPlaying ? 'pause' : 'play'}"></i></button>
-            <span class="track-title" style="${isPlaying ? 'color:var(--primary-color); font-weight:600;' : ''}">${track.title}</span>
-            <span class="track-artist">${track.artist || 'Unknown'}</span>
-            <span class="track-album">${track.album || 'Unknown album'}</span>
+        <div class="track-list-row queue-item ${activeClass} ${isPlaying ? 'currently-playing' : ''}" draggable="true" data-index="${index}">
+            <div class="status-icon">
+                <input type="checkbox" class="track-select-checkbox" data-index="${index}">
+            </div>
+            <div class="status-icon">
+                <button class="row-play-btn"><i class="fas fa-play"></i></button>
+                <div class="playing-bars">
+                    <div class="bar bar1"></div>
+                    <div class="bar bar2"></div>
+                    <div class="bar bar3"></div>
+                </div>
+                <span class="row-index" style="font-size: 0.8em; opacity: 0.5;">${index + 1}</span>
+            </div>
+            <div class="track-title-col">
+                <span class="track-title">${truncate(track.title, 40)}</span>
+            </div>
+            <div class="track-artist-col">
+                <span class="track-artist">${truncate(track.artist || 'Unknown', 20)}</span>
+            </div>
+            <span class="track-album">${truncate(track.album || 'Unknown album', 20)}</span>
             <span class="track-year">${track.year || ''}</span>
-            <span class="track-genre">${track.genre || 'Unknown genre'}</span>
+            <span class="track-genre">${truncate(track.genre || 'Unknown genre', 20)}</span>
             <span class="track-duration">${duration}</span>
         </div>
         `;
@@ -46,20 +60,30 @@ export function renderQueueTable() {
     // Add Event Listeners
     queueList.querySelectorAll('.queue-item').forEach(item => {
         const index = parseInt(item.dataset.index);
-
         item.addEventListener('click', (e) => {
-            if (e.target.closest('.row-play-btn') || e.target.type === 'checkbox') return;
+            if (e.target.type === 'checkbox') return;
             if (actions.onPlay) actions.onPlay(index);
         });
 
-        const playBtn = item.querySelector('.row-play-btn');
-        if (playBtn) {
-            playBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                if (actions.onPlay) actions.onPlay(index);
+        const checkbox = item.querySelector('.track-select-checkbox');
+        if (checkbox) {
+            checkbox.addEventListener('change', (e) => {
+                item.classList.toggle('selected', e.target.checked);
             });
         }
     });
+
+    // Handle select all
+    const selectAll = document.getElementById('select-all-queue');
+    if (selectAll) {
+        selectAll.addEventListener('change', (e) => {
+            const checkboxes = queueList.querySelectorAll('.track-select-checkbox');
+            checkboxes.forEach(cb => {
+                cb.checked = selectAll.checked;
+                cb.closest('.track-list-row').classList.toggle('selected', cb.checked);
+            });
+        });
+    }
 
     const activeItem = queueList.querySelector('.queue-item.active');
     if (activeItem) {

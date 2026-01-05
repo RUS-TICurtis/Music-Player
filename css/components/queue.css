@@ -1,0 +1,63 @@
+/* --- Queue View --- */
+.queue-view-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 30px 30px 20px;
+}
+
+.queue-view-header h2 {
+    font-size: 28px;
+    color: var(--dark-color);
+}
+
+.queue-view-actions {
+    display: flex;
+    gap: 10px;
+}
+
+.queue-list-container {
+    padding: 0 30px 30px;
+    background: var(--surface-color);
+    border-radius: 12px;
+    margin: 0 30px;
+    color: var(--dark-color);
+}
+
+.queue-item {
+    /* Inherits from .track-list-row */
+    position: relative;
+}
+
+.queue-item:hover {
+    background-color: var(--light-color);
+}
+
+.queue-item.active {
+    background-color: rgba(108, 92, 231, 0.1);
+}
+
+.queue-item.active .track-title {
+    color: var(--primary-color);
+    font-weight: 600;
+}
+
+.queue-item.dragging {
+    opacity: 0.5;
+}
+
+.queue-item.drag-over {
+    border-top: 2px solid var(--primary-color);
+    background-color: rgba(108, 92, 231, 0.05);
+}
+
+/* Drag and Drop Indicator Styles from index.html style block */
+.queue-item.drop-target-top {
+    border-top: 2px solid var(--primary-color);
+    box-shadow: 0 -5px 10px -5px var(--primary-color-translucent);
+}
+
+.queue-item.drop-target-bottom {
+    border-bottom: 2px solid var(--primary-color);
+    box-shadow: 0 5px 10px -5px var(--primary-color-translucent);
+}

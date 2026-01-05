@@ -8,6 +8,7 @@ import * as QueueManager from './queue-manager.js';
 import * as AlbumManager from './album-manager.js';
 import * as ArtistManager from './artist-manager.js';
 import * as DiscoverManager from './discover-manager.js';
+import * as ProfileManager from './profile-manager.js';
 import * as ContextMenuManager from './context-menu-manager.js';
 import { refreshLyrics, openManualLyricsSearch } from './lyrics-manager.js';
 
@@ -42,6 +43,8 @@ document.addEventListener('DOMContentLoaded', async function () {
         PlaybackManager.removeFromQueue
     );
 
+    ProfileManager.initProfileListeners();
+
     // Context Menu registers itself to be closed by UI interactions
     // In ContextMenuManager, we export setActiveContextMenu. 
     // We can use a global click listener here to close it.
@@ -55,16 +58,56 @@ document.addEventListener('DOMContentLoaded', async function () {
 
     // Render Initial Views
     LibraryManager.renderHomeGrid();
+    ProfileManager.renderProfile();
+
+    // Restore Library View Mode
+    const savedLibraryView = localStorage.getItem('genesis_library_view') || 'grid';
+    UI.switchLibraryView(savedLibraryView);
+
     LibraryManager.renderLibraryGrid();
     AlbumManager.renderAlbumsGrid();
     ArtistManager.renderArtistsGrid();
     PlaylistManager.renderPlaylists();
 
+    const discoverSearchInput = document.getElementById('discover-search-input');
+    const discoverSearchBtn = document.getElementById('discover-search-btn');
+
+    // Initial Discover Fetch (it handles storage check now)
+    DiscoverManager.renderDiscoverGrid();
+
+    // Restore Global Selection
+    LibraryManager.restoreSelection();
+
+    // Restore Search
+    UI.restoreSearch();
+    const discoverLastSearch = localStorage.getItem('genesis_discover_search');
+    if (discoverLastSearch && discoverSearchInput) {
+        discoverSearchInput.value = discoverLastSearch;
+    }
+
     // Restore Playback State (depends on Library loaded)
     await PlaybackManager.restorePlaybackState();
 
-    // Initial Discover Fetch
-    DiscoverManager.renderDiscoverGrid();
+    // Restore UI State (Last Section)
+    const lastSection = localStorage.getItem('genesis_active_section');
+    const lastDetailId = localStorage.getItem('genesis_active_detail_id');
+
+    if (lastSection) {
+        if (lastSection === 'playlist-detail-view' && lastDetailId) {
+            PlaylistManager.openPlaylistView(lastDetailId);
+        } else if (lastSection === 'album-detail-view' && lastDetailId) {
+            AlbumManager.openAlbumByName(lastDetailId);
+        } else if (lastSection === 'artist-detail-view' && lastDetailId) {
+            ArtistManager.openArtistByName(lastDetailId);
+        } else if (lastSection === 'favorites-section') {
+            LibraryManager.renderFavoritesGrid();
+            UI.switchSection('favorites-section');
+        } else {
+            UI.switchSection(lastSection);
+        }
+    } else {
+        UI.switchSection('home-section');
+    }
 
 
     // --- 3. Event Listeners ---
@@ -74,10 +117,20 @@ document.addEventListener('DOMContentLoaded', async function () {
     const bottomNavItems = UI.elements.bottomNavItems();
     [...menuItems, ...bottomNavItems].forEach(item => {
         item.addEventListener('click', () => {
-            UI.switchSection(item.dataset.target);
+            const target = item.dataset.target;
+            UI.switchSection(target);
+            // Auto-hide sidebar on mobile
+            if (window.innerWidth <= 768) {
+                const sidebar = document.querySelector('.sidebar');
+                if (sidebar) sidebar.classList.remove('active');
+            }
             // Special handling for discover tab
-            if (item.dataset.target === 'discover-section' && playerContext.discoverTracks.length === 0) {
+            if (target === 'discover-section' && playerContext.discoverTracks.length === 0) {
                 DiscoverManager.renderDiscoverGrid();
+            }
+            // Special handling for favorites
+            if (target === 'favorites-section') {
+                LibraryManager.renderFavoritesGrid();
             }
         });
     });
@@ -121,6 +174,12 @@ document.addEventListener('DOMContentLoaded', async function () {
     document.getElementById('prev-btn')?.addEventListener('click', PlaybackManager.prevTrack);
     document.getElementById('shuffle-btn')?.addEventListener('click', PlaybackManager.toggleShuffle);
     document.getElementById('repeat-btn')?.addEventListener('click', PlaybackManager.toggleRepeat);
+    document.getElementById('library-play-all-btn')?.addEventListener('click', () => {
+        const tracks = [...playerContext.libraryTracks];
+        if (tracks.length > 0) {
+            PlaybackManager.startPlayback(tracks.map(t => t.id), 0, false);
+        }
+    });
 
     // Progress Bar Drag
     PlaybackManager.initProgressBarListeners();
@@ -134,6 +193,9 @@ document.addEventListener('DOMContentLoaded', async function () {
     if (volumeBtn && volumePopup) {
         volumeBtn.addEventListener('click', (e) => {
             e.stopPropagation();
+            if (volumeSlider) volumeSlider.value = audioPlayer.volume;
+            const volumePercentage = document.getElementById('volume-percentage');
+            if (volumePercentage) volumePercentage.textContent = Math.round(audioPlayer.volume * 100);
             volumePopup.classList.toggle('active');
         });
         document.addEventListener('click', (e) => {
@@ -169,6 +231,8 @@ document.addEventListener('DOMContentLoaded', async function () {
     const searchInput = UI.elements.searchInput();
     if (searchInput) {
         const handleSearchInput = Utils.debounce(() => {
+            const query = searchInput.value.trim();
+            localStorage.setItem('genesis_last_search', query);
             UI.renderSearchDropdown();
         }, 180);
         searchInput.addEventListener('input', handleSearchInput);
@@ -191,10 +255,12 @@ document.addEventListener('DOMContentLoaded', async function () {
     }
 
     // Discover Search
-    const discoverSearchInput = document.getElementById('discover-search-input');
-    const discoverSearchBtn = document.getElementById('discover-search-btn');
     if (discoverSearchInput && discoverSearchBtn) {
-        const performSearch = () => DiscoverManager.renderDiscoverGrid(discoverSearchInput.value.trim());
+        const performSearch = () => {
+            const query = discoverSearchInput.value.trim();
+            localStorage.setItem('genesis_discover_search', query);
+            DiscoverManager.renderDiscoverGrid(query);
+        };
         discoverSearchBtn.addEventListener('click', performSearch);
         discoverSearchInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') performSearch(); });
     }
@@ -251,17 +317,9 @@ document.addEventListener('DOMContentLoaded', async function () {
     const urlModal = document.getElementById('url-modal');
     const urlInput = document.getElementById('url-input');
     const urlCancelBtn = document.getElementById('url-cancel-btn');
-    const urlLoadBtn = document.getElementById('url-load-btn');
-
-    if (document.getElementById('open-url-option')) {
-        document.getElementById('open-url-option').addEventListener('click', () => {
-            if (urlModal) urlModal.classList.remove('hidden');
-            if (urlInput) urlInput.focus();
-        });
-    }
-
     if (urlCancelBtn) urlCancelBtn.addEventListener('click', () => urlModal.classList.add('hidden'));
 
+    const urlLoadBtn = document.getElementById('url-load-btn');
     if (urlLoadBtn && urlInput) {
         urlLoadBtn.addEventListener('click', () => {
             const url = urlInput.value.trim();
@@ -273,6 +331,43 @@ document.addEventListener('DOMContentLoaded', async function () {
         });
     }
 
+    // Section Action Buttons (Arrows -> Open full views)
+    // Artists
+    const artistsArrow = document.querySelector('#home-section .section-header-row:nth-of-type(2) .section-action-btn');
+    if (artistsArrow) artistsArrow.addEventListener('click', () => LibraryManager.openSectionModal('artists'));
+
+    // Albums
+    const albumsArrow = document.querySelector('#home-section .section-header-row:nth-of-type(3) .section-action-btn');
+    if (albumsArrow) albumsArrow.addEventListener('click', () => LibraryManager.openSectionModal('albums'));
+
+    // Suggestion Cards Click
+    const suggestionContainer = document.getElementById('home-suggestions-container');
+    if (suggestionContainer) {
+        suggestionContainer.addEventListener('click', async (e) => {
+            const card = e.target.closest('.suggestion-card');
+            if (!card) return;
+
+            const mixType = card.dataset.mixType;
+            if (mixType) {
+                const mixData = await DiscoverManager.fetchMix(mixType);
+                if (mixData && mixData.tracks.length > 0) {
+                    PlaylistManager.openPlaylistView({
+                        id: `mix-${mixType}`,
+                        name: mixData.name,
+                        description: 'Curated mix based on your taste',
+                        tracks: mixData.tracks,
+                        isVirtual: true,
+                        coverURL: mixData.tracks[0]?.coverURL
+                    });
+                }
+            } else if (card.id === 'suggestion-quick-shuffle') {
+                PlaybackManager.toggleShuffle();
+                if (playerContext.libraryTracks.length) {
+                    PlaybackManager.startPlayback(playerContext.libraryTracks.map(t => t.id), 0, true);
+                }
+            }
+        });
+    }
     // Edit Modal handlers...
     // Profile Pic handlers...
     const profilePicInput = document.getElementById('profile-pic-input');
@@ -283,9 +378,8 @@ document.addEventListener('DOMContentLoaded', async function () {
                 const reader = new FileReader();
                 reader.onload = function (eResult) {
                     const result = eResult.target.result;
-                    const profilePic = document.getElementById('profile-pic');
-                    if (profilePic) profilePic.src = result;
                     localStorage.setItem('genesis_profile_pic', result);
+                    ProfileManager.renderProfile();
                 };
                 reader.readAsDataURL(file);
             }
@@ -325,10 +419,62 @@ document.addEventListener('DOMContentLoaded', async function () {
     // Playlist Creation Button
     const createPlaylistBtn = document.getElementById('create-playlist-btn');
     if (createPlaylistBtn) {
-        createPlaylistBtn.addEventListener('click', () => {
-            const name = prompt('Enter playlist name:');
-            if (name) PlaylistManager.createPlaylist(name, true);
+        createPlaylistBtn.addEventListener('click', async () => {
+            const name = await UI.showInputModal('New Playlist', 'Enter playlist name:', '', 'My Favorites');
+            if (name && name.trim()) PlaylistManager.createPlaylist(name.trim(), true);
         });
+    }
+
+    // Floating Shuffle Button Logic
+    const shuffleFab = document.getElementById('library-shuffle-fab');
+    if (shuffleFab) {
+        shuffleFab.addEventListener('click', () => {
+            const tracks = [...playerContext.libraryTracks];
+            if (tracks.length > 0) {
+                // Shuffle logic
+                for (let i = tracks.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [tracks[i], tracks[j]] = [tracks[j], tracks[i]];
+                }
+                const trackIds = tracks.map(t => t.id);
+                PlaybackManager.startPlayback(trackIds, 0, false);
+            }
+        });
+    }
+
+    // Suggestion Cards Actions
+    document.getElementById('suggestion-quick-shuffle')?.addEventListener('click', () => {
+        const tracks = [...playerContext.libraryTracks];
+        if (tracks.length > 0) {
+            for (let i = tracks.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [tracks[i], tracks[j]] = [tracks[j], tracks[i]];
+            }
+            PlaybackManager.startPlayback(tracks.map(t => t.id), 0, false);
+        }
+    });
+
+    document.getElementById('suggestion-recent-queue')?.addEventListener('click', () => {
+        UI.switchSection('queue-view-section');
+    });
+
+    // Playback Bar Swiping (Gestures)
+    const playbackBar = document.querySelector('.playback-bar');
+    if (playbackBar) {
+        let touchStartX = 0;
+        playbackBar.addEventListener('touchstart', e => {
+            touchStartX = e.changedTouches[0].screenX;
+        }, { passive: true });
+
+        playbackBar.addEventListener('touchend', e => {
+            const touchEndX = e.changedTouches[0].screenX;
+            const threshold = 50;
+            if (touchEndX < touchStartX - threshold) {
+                PlaybackManager.nextTrack(); // Swipe left -> Next
+            } else if (touchEndX > touchStartX + threshold) {
+                PlaybackManager.prevTrack(); // Swipe right -> Prev
+            }
+        }, { passive: true });
     }
 
     // Extended Info Panel Toggles
@@ -376,16 +522,11 @@ document.addEventListener('DOMContentLoaded', async function () {
         });
     }
 
-    // Play All Library
+    // Play All Library (Removed/Redirected)
     const playAllLibBtn = document.getElementById('library-play-all-btn');
     if (playAllLibBtn) {
         playAllLibBtn.addEventListener('click', () => {
-            const sortedTracks = [...playerContext.libraryTracks].sort((a, b) => (a.title || '').localeCompare(b.title || ''));
-            if (sortedTracks.length > 0) {
-                const trackIds = sortedTracks.map(t => t.id);
-                PlaybackManager.startPlayback(trackIds, 0, false);
-                UI.showMessage(`Playing all ${playerContext.libraryTracks.length} tracks from your library.`);
-            }
+            document.getElementById('library-shuffle-fab')?.click();
         });
     }
 

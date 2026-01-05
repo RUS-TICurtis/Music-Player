@@ -1,0 +1,33 @@
+:root {
+    --primary-color: #6c5ce7;
+    --secondary-color: #a29bfe;
+    --surface-color: #fafafa;
+    /* New: A softer white for component backgrounds */
+    --dark-color: #2d3436;
+    --light-color: #f0f2f5;
+    /* A slightly darker background for better contrast */
+    --text-color: #636e72;
+    --text-light: #dfe6e9;
+    --highlight-color: #fd79a8;
+    --background-gradient: linear-gradient(135deg, #6c5ce7 0%, #a29bfe 100%);
+}
+
+body.dark-theme {
+    --primary-color: #7a69ff;
+    /* Slightly brighter purple for dark bg */
+    --secondary-color: #a29bfe;
+    --surface-color: #2c3136;
+    /* Dark grey for cards, sidebars, modals */
+    --dark-color: #e1e1e1;
+    /* Light text color */
+    --light-color: #1e2124;
+    /* Main dark background */
+    --text-color: #909599;
+    /* Dimmer secondary text */
+    --text-light: #4a4f54;
+    /* Used for borders or subtle backgrounds */
+    --highlight-color: #fd79a8;
+
+    /* Invert some shadows to glows or lighter shadows */
+    --shadow-color-light: rgba(255, 255, 255, 0.05);
+}

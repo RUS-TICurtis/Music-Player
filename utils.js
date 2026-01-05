@@ -1,3 +1,8 @@
+export function truncate(str, n = 25) {
+    if (!str || typeof str !== 'string') return str;
+    return (str.length > n) ? str.substring(0, n) + '...' : str;
+}
+
 export function formatTime(seconds) {
     if (isNaN(seconds) || seconds < 0) return "0:00";
     const m = Math.floor(seconds / 60);

@@ -1,0 +1,278 @@
+/* Lists & Track Rows */
+
+.track-list-header,
+.track-list-row {
+    display: grid;
+    /* Columns: Checkbox | Play/Status | Title | Artist | Album | Year | Genre | Duration */
+    grid-template-columns: 40px 40px 3fr 2fr 2fr 80px 1.5fr 80px;
+    align-items: center;
+    padding: 8px 16px;
+    gap: 12px;
+    font-size: 0.9em;
+}
+
+.track-list-header {
+    font-weight: 700;
+    color: var(--text-color);
+    text-transform: uppercase;
+    font-size: 0.8em;
+    letter-spacing: 1px;
+    border-bottom: 2px solid rgba(255, 255, 255, 0.05);
+    margin-bottom: 10px;
+    position: sticky;
+    top: 0;
+    background: var(--light-color);
+    z-index: 10;
+}
+
+.track-list-row {
+    margin-bottom: 8px;
+    background-color: var(--surface-color);
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    border: 1px solid rgba(255, 255, 255, 0.03);
+    position: relative;
+}
+
+.track-list-row:hover {
+    background-color: var(--light-color);
+    transform: translateX(4px);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+    border-color: rgba(255, 255, 255, 0.1);
+}
+
+.track-list-row.selected {
+    background-color: rgba(108, 92, 231, 0.1);
+    border-color: var(--primary-color);
+}
+
+/* Highlighting */
+.track-list-row.currently-playing {
+    background-color: var(--primary-color-surface);
+    border-color: var(--primary-color);
+}
+
+.track-list-row.currently-playing .track-title,
+.track-list-row.currently-playing .track-artist,
+.track-list-row.currently-playing .track-album,
+.track-list-row.currently-playing .track-duration {
+    color: var(--primary-color);
+}
+
+/* Visibility Logic */
+.track-list-row .track-select-checkbox,
+.track-list-row .row-play-btn {
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.2s;
+}
+
+.track-list-row:hover .track-select-checkbox,
+.track-list-row:hover .row-play-btn {
+    opacity: 1;
+    visibility: visible;
+}
+
+.track-list-row:hover .status-icon i.fa-music,
+.track-list-row:hover .row-index {
+    display: none;
+}
+
+/* Checkbox and Play Button Outlines */
+.track-select-checkbox {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 18px;
+    height: 18px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-radius: 4px;
+    cursor: pointer;
+    position: relative;
+    transition: all 0.2s;
+}
+
+.track-select-checkbox:checked {
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+}
+
+.track-select-checkbox:checked::after {
+    content: '\f00c';
+    font-family: 'Font Awesome 5 Free';
+    font-weight: 900;
+    font-size: 10px;
+    color: white;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
+
+.track-select-checkbox:hover {
+    border-color: var(--primary-color);
+}
+
+.row-play-btn {
+    background: none;
+    border: none;
+    color: var(--text-color);
+    cursor: pointer;
+    font-size: 1.1em;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.row-play-btn i {
+    color: transparent;
+    -webkit-text-stroke: 1.5px rgba(255, 255, 255, 0.5);
+    transition: all 0.2s;
+}
+
+.track-list-row:hover .row-play-btn i {
+    -webkit-text-stroke: 1.5px var(--primary-color);
+}
+
+.track-list-row.currently-playing .row-play-btn i {
+    -webkit-text-stroke: 1.5px var(--primary-color);
+}
+
+/* Switch play to pause icon when actively playing */
+body.is-playing .track-list-row.currently-playing .row-play-btn i::before {
+    content: "\f04c";
+    /* Font Awesome Pause Icon */
+}
+
+/* Equalizer Bars for Playing State */
+.playing-bars {
+    display: none;
+    align-items: flex-end;
+    gap: 2px;
+    width: 16px;
+    height: 16px;
+}
+
+.track-list-row.currently-playing .playing-bars {
+    display: flex;
+}
+
+.track-list-row.currently-playing .status-icon i.fa-music,
+.track-list-row.currently-playing .row-index {
+    display: none;
+}
+
+/* Hide bars on hover to show play button */
+.track-list-row.currently-playing:hover .playing-bars {
+    display: none;
+}
+
+.bar {
+    width: 3px;
+    background-color: var(--primary-color);
+    animation: bounce 1s ease-in-out infinite;
+    animation-play-state: paused;
+}
+
+body.is-playing .bar {
+    animation-play-state: running;
+}
+
+.bar1 {
+    height: 40%;
+    animation-delay: 0.1s;
+}
+
+.bar2 {
+    height: 80%;
+    animation-delay: 0.3s;
+}
+
+.bar3 {
+    height: 60%;
+    animation-delay: 0.2s;
+}
+
+@keyframes bounce {
+
+    0%,
+    100% {
+        height: 30%;
+    }
+
+    50% {
+        height: 100%;
+    }
+}
+
+/* Individual Cell Styles */
+.track-title {
+    font-weight: 600;
+    color: var(--dark-color);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.track-artist,
+.track-album,
+.track-genre {
+    color: var(--text-color);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.track-year {
+    color: var(--primary-color);
+    /* Primary theme color for year */
+    font-weight: 500;
+}
+
+.track-duration {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-color);
+}
+
+.status-icon {
+    display: flex;
+    justify-content: center;
+    font-size: 1.1em;
+    color: var(--text-light);
+}
+
+.track-select-checkbox {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+    accent-color: var(--primary-color);
+}
+
+/* List View Grid Override */
+.home-content-grid.list-view {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    padding: 10px 30px;
+}
+
+/* Hide header icon columns on mobile if necessary, or simplify */
+@media (max-width: 768px) {
+    .track-list-header {
+        display: none;
+    }
+
+    .track-list-row {
+        grid-template-columns: 40px 1fr 60px;
+        gap: 10px;
+    }
+
+    .track-album,
+    .track-year,
+    .track-genre,
+    .track-artist-header {
+        display: none;
+    }
+}

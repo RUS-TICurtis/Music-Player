@@ -1,7 +1,9 @@
 import { playerContext } from './state.js';
+import { truncate } from './utils.js';
 
 let startPlaybackFn = null;
 let currentSource = 'jamendo';
+const DISCOVER_STORAGE_KEY = 'genesis_discover_tracks';
 
 export function setDiscoverDependencies(startPlayback) {
     startPlaybackFn = startPlayback;
@@ -86,7 +88,7 @@ export async function fetchJamendoTracks(query = '') {
         const data = await response.json();
 
         // Map Jamendo track data to our application's track format and store it
-        playerContext.discoverTracks = data.results.map(track => ({
+        const tracks = data.results.map(track => ({
             id: `jamendo-${track.id}`, // Unique ID for discover tracks
             title: track.name,
             artist: track.artist_name,
@@ -99,12 +101,31 @@ export async function fetchJamendoTracks(query = '') {
             source: 'jamendo'
         }));
 
-        return playerContext.discoverTracks;
+        playerContext.discoverTracks = tracks;
+        saveDiscoverTracks(tracks);
+        return tracks;
     } catch (error) {
         console.error("Error fetching from discover endpoint:", error);
         if (discoverGrid) discoverGrid.innerHTML = `<div class="empty-state" style="grid-column: 1 / -1;">Could not load tracks from Jamendo. Please check your connection or API key.</div>`;
         return [];
     }
+}
+
+function saveDiscoverTracks(tracks) {
+    localStorage.setItem(DISCOVER_STORAGE_KEY, JSON.stringify(tracks));
+}
+
+export function loadDiscoverFromStorage() {
+    const stored = localStorage.getItem(DISCOVER_STORAGE_KEY);
+    if (stored) {
+        try {
+            playerContext.discoverTracks = JSON.parse(stored);
+            return true;
+        } catch (e) {
+            console.error("Error loading discover tracks from storage", e);
+        }
+    }
+    return false;
 }
 
 export function renderDiscoverCards(tracks) {
@@ -116,18 +137,22 @@ export function renderDiscoverCards(tracks) {
         return;
     }
 
-    discoverGrid.innerHTML = tracks.map(track => `
-        <div class="recent-media-card" data-track-id="${track.id}" tabindex="0">
-            <div class="album-art">
-                <img src="${track.coverURL}" alt="${track.title}" loading="lazy">
-                ${track.objectURL ? '' : '<div class="source-badge" style="position:absolute;bottom:0;right:0;background:rgba(0,0,0,0.7);color:white;padding:2px 5px;font-size:10px;">MetaData Only</div>'}
+    discoverGrid.innerHTML = tracks.map(track => {
+        const isCurrentlyPlaying = playerContext.currentTrack?.id === track.id;
+        const playingClass = isCurrentlyPlaying ? 'currently-playing' : '';
+        return `
+            <div class="recent-media-card ${playingClass}" data-track-id="${track.id}" tabindex="0">
+                <div class="album-art">
+                    <img src="${track.coverURL}" alt="${track.title}" loading="lazy">
+                    ${track.objectURL ? '' : '<div class="source-badge" style="position:absolute;bottom:0;right:0;background:rgba(0,0,0,0.7);color:white;padding:2px 5px;font-size:10px;">MetaData Only</div>'}
+                </div>
+                <div class="card-footer">
+                    ${track.objectURL ? `<button class="control-btn small card-footer-play-btn" title="Play"><i class="fas fa-play"></i></button>` : `<button class="control-btn small card-search-btn" title="Search on Jamendo"><i class="fas fa-search"></i></button>`}
+                    <h5>${truncate(track.title, 40)}</h5>
+                </div>
             </div>
-            <div class="card-footer">
-                ${track.objectURL ? `<button class="control-btn small card-footer-play-btn" title="Play"><i class="fas fa-play"></i></button>` : `<button class="control-btn small card-search-btn" title="Search on Jamendo"><i class="fas fa-search"></i></button>`}
-                <h5>${track.title}</h5>
-            </div>
-        </div>
-    `).join('');
+        `;
+    }).join('');
 
     // Play button logic
     discoverGrid.querySelectorAll('.card-footer-play-btn').forEach(btn => {
@@ -210,7 +235,7 @@ function shuffleArray(array) {
 // Fetchers modified to accept limits if possible, or we slice results
 // We'll trust the individual fetch functions or slice the results here.
 
-async function refreshDiscover() {
+export async function refreshDiscover() {
     const discoverGrid = document.getElementById('discover-grid');
     if (discoverGrid) {
         discoverGrid.innerHTML = `<div class="loading-spinner" style="grid-column: 1 / -1; display:flex; justify-content:center; align-items: center; min-height: 200px; font-size: 1.2em; color: var(--text-color);"><i class="fas fa-spinner fa-spin" style="margin-right: 10px;"></i> Exploring the Musicverse...</div>`;
@@ -251,6 +276,7 @@ async function refreshDiscover() {
         const mixedTracks = shuffleArray(uniqueTracks);
 
         playerContext.discoverTracks = mixedTracks;
+        saveDiscoverTracks(mixedTracks);
         renderDiscoverCards(mixedTracks);
 
     } catch (e) {
@@ -259,20 +285,82 @@ async function refreshDiscover() {
     }
 }
 
-export async function renderDiscoverGrid(query = '') {
+export async function renderDiscoverGrid(query = '', forceRefresh = false) {
     const discoverGrid = document.getElementById('discover-grid');
     if (!discoverGrid) return;
+
+    // Check storage first if no query and not forcing a refresh
+    if (!query && !forceRefresh) {
+        if (loadDiscoverFromStorage()) {
+            renderDiscoverCards(playerContext.discoverTracks);
+            return;
+        }
+    }
+
     const loadingMessage = query ? `Searching for "${query}"...` : 'Loading popular tracks...';
     discoverGrid.innerHTML = `<div class="loading-spinner" style="grid-column: 1 / -1;">${loadingMessage}</div>`;
 
-    // If query exists, always use Jamendo (as it is the search provider)
     let tracks = [];
     if (query) {
         tracks = await fetchJamendoTracks(query);
     } else {
-        // Init load: default to Jamendo or Refresh Logic?
-        // Default to Jamendo for audio immediate gratification
         tracks = await fetchJamendoTracks();
     }
     renderDiscoverCards(tracks);
+}
+export async function fetchMix(type) {
+    let url = '/api/discover';
+    let mixName = 'Mix';
+
+    switch (type) {
+        case 'trending':
+            url += '?order=popularity_week&limit=20';
+            mixName = 'Trending Now';
+            break;
+        case 'new':
+            url += '?order=releasedate&limit=20';
+            mixName = 'New Arrivals';
+            break;
+        case 'pop':
+            url += '?tags=pop&order=popularity_month&limit=20';
+            mixName = 'Pop Hits';
+            break;
+        case 'rock':
+            url += '?tags=rock&order=popularity_month&limit=20';
+            mixName = 'Rock Classics';
+            break;
+        case 'electronic':
+            url += '?tags=electronic&order=popularity_month&limit=20';
+            mixName = 'Electronic Vibes';
+            break;
+        case 'lofi': // Fallback to search if tags not supported purely or just use tags
+            url += '?tags=lofi&order=buzzerate&limit=20';
+            mixName = 'Lo-Fi Chill';
+            break;
+        default:
+            url += '?order=popularity_week&limit=20';
+            mixName = 'Discover Mix';
+    }
+
+    try {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error('Mix fetch failed');
+        const data = await response.json();
+        const tracks = data.results.map(track => ({
+            id: `jamendo-${track.id}`,
+            title: track.name,
+            artist: track.artist_name,
+            album: track.album_name,
+            duration: track.duration,
+            coverURL: track.image.replace('width=200', 'width=400'),
+            objectURL: track.audio,
+            isURL: true,
+            isFromDiscover: true,
+            source: 'jamendo'
+        }));
+        return { name: mixName, tracks };
+    } catch (e) {
+        console.error("Error fetching mix:", e);
+        return { name: mixName, tracks: [] };
+    }
 }

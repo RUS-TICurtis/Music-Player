@@ -1,6 +1,6 @@
 import { playerContext } from './state.js';
 import { renderDetailTrackList } from './library-manager.js';
-import { showMessage } from './ui-manager.js';
+import { showMessage, switchSection } from './ui-manager.js';
 
 let startPlaybackFn = null;
 
@@ -55,10 +55,7 @@ export function renderArtistsGrid() {
 }
 
 export function openArtistView(artist) {
-    const artistsSection = document.getElementById('artists-section');
     const artistDetailView = document.getElementById('artist-detail-view');
-    artistsSection.classList.add('hidden');
-    artistDetailView.classList.remove('hidden');
     artistDetailView.innerHTML = `
     <div class="playlist-detail-header">
         <button id="artist-detail-back-btn" class="btn-secondary" style="padding: 10px 15px;"><i class="fas fa-arrow-left"></i> Back</button>
@@ -82,18 +79,41 @@ export function openArtistView(artist) {
 
     document.getElementById('artist-detail-back-btn').addEventListener('click', () => {
         artistDetailView.classList.add('hidden');
-        artistsSection.classList.remove('hidden');
+        const artistsSection = document.getElementById('artists-section');
+        if (artistsSection) artistsSection.classList.remove('hidden');
+        else {
+            // Fallback if artists section doesn't exist or we want to go home
+            // import('./ui-manager.js').then(ui => ui.switchSection('home-section'));
+            // But simpler to just unhide whatever we have or do nothing.
+            // Usually there IS an artists section.
+            document.getElementById('home-section')?.classList.remove('hidden');
+        }
     });
 
     document.getElementById('artist-play-all-btn').addEventListener('click', () => {
         if (startPlaybackFn) startPlaybackFn(artist.trackIds, 0, false);
-        showMessage(`Playing all tracks by ${artist.name}`);
+        // showMessage(`Playing all tracks by ${artist.name}`);
     });
 
     document.getElementById('artist-shuffle-btn').addEventListener('click', () => {
         if (startPlaybackFn) startPlaybackFn(artist.trackIds, 0, true);
-        showMessage(`Shuffling tracks by ${artist.name}`);
+        // showMessage(`Shuffling tracks by ${artist.name}`);
     });
 
     renderDetailTrackList(artist.trackIds, document.getElementById('artist-track-list'), { showArtist: false, showAlbum: true });
+
+    switchSection('artist-detail-view', artist.name);
+}
+
+export function openArtistByName(artistName) {
+    if (!artistName) return;
+    const tracks = playerContext.libraryTracks.filter(t => (t.artist || 'Unknown Artist') === artistName);
+    if (tracks.length === 0) return;
+
+    const artist = {
+        name: artistName,
+        coverURL: tracks.find(t => t.coverURL)?.coverURL || null,
+        trackIds: tracks.map(t => t.id)
+    };
+    openArtistView(artist);
 }

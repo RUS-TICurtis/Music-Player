@@ -1,0 +1,305 @@
+/* Responsive */
+
+/* Tablet (max-width: 992px) */
+@media (max-width: 992px) {
+    .sidebar {
+        width: 72px;
+    }
+
+    .logo span,
+    .menu-item span,
+    .section-header span,
+    .open-btn span,
+    .dropdown-item span {
+        display: none;
+    }
+
+    .logo {
+        padding: 0 10px 30px;
+        justify-content: center;
+    }
+
+    .main-content {
+        margin-left: 72px;
+    }
+
+    .open-btn {
+        justify-content: center;
+        padding: 10px;
+    }
+
+    .open-btn i {
+        margin: 0;
+    }
+
+    .hamburger {
+        display: block;
+    }
+
+    i.fas.fa-folder-open {
+        margin-right: 5px;
+    }
+
+    .sidebar.active {
+        width: 250px;
+    }
+
+    .sidebar.active span {
+        display: inline;
+    }
+
+    /* Adjust playback bar for tablets */
+    .playback-controls-center {
+        max-width: 450px;
+    }
+
+    .playback-extra-controls {
+        width: auto;
+        justify-content: flex-end;
+    }
+
+    .volume-control-container {
+        display: none;
+    }
+}
+
+/* Mobile (max-width: 768px) */
+@media (max-width: 768px) {
+
+    /* Hide top search bar as we have a new home header */
+    .search-bar {
+        display: none;
+    }
+
+    .sidebar {
+        position: fixed;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        transform: translateX(-100%);
+        transition: transform 0.3s ease;
+        z-index: 2000;
+        width: 280px;
+        height: 100vh;
+    }
+
+    .sidebar.active {
+        transform: translateX(0);
+        left: 0;
+        width: 280px;
+    }
+
+    .main-content {
+        margin-left: 0;
+    }
+
+    /* --- Mobile Extended Info Panel (Full Screen) --- */
+    .extended-info-panel {
+        width: 100%;
+        height: 100%;
+        z-index: 1100;
+        /* Above playback bar/nav but below sidebar overlay */
+        padding-bottom: 0;
+        /* No need for playback bar padding */
+        border-left: none;
+        /* No border on mobile */
+    }
+
+    /* When panel is active on mobile, it covers everything, so no margin shift needed */
+    .main-content.panel-active {
+        margin-right: 0;
+    }
+
+    /* --- Mobile Playback Bar (Mini-Player) --- */
+    .playback-bar {
+        height: 75px;
+        padding: 0 15px;
+        bottom: 70px;
+        /* Position above bottom nav (56px) + buffer */
+        z-index: 1000;
+        display: grid;
+        grid-template-columns: 1fr auto;
+    }
+
+    .playback-album-art {
+        width: 44px;
+        height: 44px;
+    }
+
+    .playback-song-details h4 {
+        font-size: 15px;
+        margin-bottom: 2px;
+    }
+
+    .playback-song-details p {
+        font-size: 12px;
+    }
+
+    .playback-track-info {
+        max-width: 80%;
+    }
+
+    /* Hide complex controls on mobile */
+    .playback-controls-center {
+        display: none !important;
+    }
+
+    .playback-extra-controls {
+        display: flex;
+        align-items: center;
+        width: auto;
+        padding-top: 0;
+        justify-content: flex-end;
+    }
+
+    /* --- Bottom Navigation Bar --- */
+    .bottom-nav {
+        display: flex;
+        justify-content: space-around;
+        align-items: center;
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        width: 100%;
+        scroll-behavior: auto;
+        height: 56px;
+        background: var(--surface-color);
+        border-top: 1px solid #e0e0e0;
+        z-index: 1000;
+        box-shadow: 0 -2px 5px rgba(0, 0, 0, 0.05);
+    }
+
+    .bottom-nav .nav-item {
+        flex-grow: 1;
+        text-align: center;
+        color: var(--text-color);
+        font-size: 10px;
+        cursor: pointer;
+        padding: 5px 0;
+        justify-items: center;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+    }
+
+    .bottom-nav .nav-item i {
+        display: block;
+        font-size: 18px;
+        margin-bottom: 0;
+        color: var(--dark-color);
+    }
+
+    .bottom-nav .nav-item.active i,
+    .bottom-nav .nav-item.active span {
+        color: var(--primary-color);
+    }
+
+    /* Adjust padding for both bars */
+    .main-content {
+        padding-bottom: 150px;
+        margin-left: 0 !important;
+        width: 100% !important;
+    }
+
+    /* --- Grid Layout Adjustments for Mobile --- */
+    .home-content-grid,
+    .discover-content,
+    .playlists-list,
+    .artists-content,
+    .albums-content {
+        padding: 0 15px 30px;
+        gap: 12px;
+        grid-template-columns: repeat(auto-fill, minmax(135px, 1fr));
+    }
+
+    /* Adjust font sizes for smaller cards */
+    .recent-media-card h5,
+    .album-name {
+        font-size: 13px;
+    }
+
+    .album-artist,
+    .card-tags span {
+        font-size: 11px;
+    }
+
+    /* Track Row Transformation (Matching Screenshot) */
+    .track-list-header {
+        display: none !important;
+    }
+
+    .track-list-row {
+        display: grid;
+        grid-template-columns: 55px 1fr 40px;
+        grid-template-areas: "art details action";
+        gap: 15px;
+        padding: 12px 15px;
+        align-items: center;
+        border-bottom: 1px solid var(--light-color);
+    }
+
+    .track-list-row .track-row-art {
+        grid-area: art;
+        width: 55px;
+        height: 55px;
+        border-radius: 8px;
+        background-color: var(--light-color);
+        overflow: hidden;
+        display: block !important;
+    }
+
+    .track-list-row .track-row-art img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+
+    .track-list-row .track-details-col {
+        grid-area: details;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        /* Ensure it clips correctly */
+    }
+
+    .track-list-row .track-title {
+        font-size: 16px;
+        font-weight: 600;
+        color: var(--dark-color);
+        margin-bottom: 4px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .track-list-row .track-artist {
+        font-size: 14px;
+        color: var(--text-color);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    /* Hide desktop columns */
+    .track-list-row .track-album,
+    .track-list-row .track-year,
+    .track-list-row .track-genre,
+    .track-list-row .track-duration,
+    .track-list-row .track-select-checkbox,
+    .track-list-row .row-play-btn {
+        display: none !important;
+    }
+
+    .track-list-row .track-action-btn {
+        grid-area: action;
+        display: flex !important;
+        justify-content: center;
+        align-items: center;
+        color: var(--text-color);
+        font-size: 20px;
+        background: none;
+        border: none;
+        cursor: pointer;
+    }
+}

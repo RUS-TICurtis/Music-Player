@@ -115,14 +115,14 @@ async function handleContextMenuAction(action, trackId, options, track) {
                 playerContext.trackQueue.splice(playerContext.currentTrackIndex + 1, 0, currentTrack);
             }
             renderQueueTable();
-            showMessage(`"${currentTrack.title}" will play next.`);
+            // showMessage(`"${currentTrack.title}" will play next.`);
             break;
         case 'add-to-queue':
             if (!currentTrack) return;
             playerContext.trackQueue.push(currentTrack);
             if (playerContext.currentTrackIndex === -1) loadTrack(playerContext.trackQueue.length - 1);
             renderQueueTable();
-            showMessage(`Added "${currentTrack.title}" to queue.`);
+            // showMessage(`Added "${currentTrack.title}" to queue.`);
             break;
         case 'remove-from-library':
             // Logic handled in library-manager? Yes: handleRemoveTrack
@@ -132,7 +132,7 @@ async function handleContextMenuAction(action, trackId, options, track) {
             );
             if (confirmed) {
                 await handleRemoveTrack(trackId);
-                showMessage(`Removed track.`);
+                // showMessage(`Removed track.`);
             }
             break;
         case 'remove-from-queue':
@@ -145,7 +145,7 @@ async function handleContextMenuAction(action, trackId, options, track) {
             if (options.playlistId) {
                 if (removeTrackFromPlaylist(options.playlistId, trackId)) {
                     refresh(options.playlistId);
-                    showMessage(`Removed track from playlist.`);
+                    // showMessage(`Removed track from playlist.`);
                 }
             }
             break;

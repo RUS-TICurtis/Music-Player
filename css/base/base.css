@@ -1,0 +1,76 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+/* --- Global Scrollbar Styling (Auto-hide) --- */
+/* WebKit (Chrome, Edge, Safari) */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+    /* Track always transparent */
+}
+
+::-webkit-scrollbar-thumb {
+    background-color: transparent;
+    /* Hidden by default */
+    border-radius: 4px;
+}
+
+/* Show thumb when hovering over the scrollable area */
+*:hover::-webkit-scrollbar-thumb {
+    background-color: rgba(128, 128, 128, 0.5);
+    /* Semi-transparent grey */
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(128, 128, 128, 0.8);
+    /* Darker on grab */
+}
+
+/* Firefox */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+}
+
+*:hover {
+    scrollbar-color: rgba(128, 128, 128, 0.5) transparent;
+}
+
+body {
+    background-color: var(--light-color);
+    color: var(--dark-color);
+    overflow-x: hidden;
+}
+
+/* Marquee animation for long song titles */
+@keyframes marquee {
+    0% {
+        transform: translateX(0);
+    }
+
+    100% {
+        transform: translateX(-100%);
+    }
+}
+
+@keyframes pulse {
+    0% {
+        transform: scale(1);
+    }
+
+    50% {
+        transform: scale(1.1);
+    }
+
+    100% {
+        transform: scale(1);
+    }
+}

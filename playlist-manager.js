@@ -1,4 +1,4 @@
-import { showMessage, showConfirmation } from './ui-manager.js';
+import { showMessage, showConfirmation, showInputModal, switchSection } from './ui-manager.js';
 import { renderDetailTrackList, clearSelection } from './library-manager.js';
 
 let playlists = {};
@@ -57,13 +57,45 @@ export async function deletePlaylist(id) {
     }
 }
 
-export function editPlaylist(id) {
+export async function editPlaylist(id) {
     const playlist = playlists[id];
-    const newName = prompt('Enter new playlist name:', playlist.name);
+    const newName = await showInputModal('Edit Playlist', 'New Playlist Name:', playlist.name, 'Enter name...');
     if (newName && newName.trim().length > 0) {
         playlist.name = newName.trim();
         savePlaylists();
         renderPlaylists();
+    }
+}
+
+function getPlaylistArtHTML(playlist) {
+    const trackIds = playlist.trackIds || [];
+    const tracksWithArt = [];
+
+    // Find up to 4 tracks with unique artwork
+    const seenArt = new Set();
+    for (const id of trackIds) {
+        const track = playerContext.libraryTracks.find(t => t.id === id);
+        if (track && track.coverURL && !seenArt.has(track.coverURL)) {
+            tracksWithArt.push(track);
+            seenArt.add(track.coverURL);
+            if (tracksWithArt.length === 4) break;
+        }
+    }
+
+    if (tracksWithArt.length === 0) {
+        return `<div class="playlist-card-art placeholder"><i class="fas fa-list-ul"></i></div>`;
+    }
+
+    if (tracksWithArt.length < 4) {
+        // Single image (or less than 4 unique)
+        return `<div class="playlist-card-art single"><img src="${tracksWithArt[0].coverURL}" alt="${playlist.name}"></div>`;
+    } else {
+        // 2x2 Grid
+        return `
+            <div class="playlist-card-art grid">
+                ${tracksWithArt.map(t => `<img src="${t.coverURL}" alt="">`).join('')}
+            </div>
+        `;
     }
 }
 
@@ -77,7 +109,14 @@ export function renderPlaylists() {
         playlistsList.innerHTML = playlistIds.map(id => {
             const playlist = playlists[id];
             const trackCount = playlist.trackIds.length;
-            return `<div class="playlist-card" data-id="${id}"><div class="playlist-card-icon"><i class="fas fa-list-ul"></i></div><div class="playlist-card-name">${playlist.name}</div><div class="playlist-card-count">${trackCount} track${trackCount !== 1 ? 's' : ''}</div><button class="control-btn small playlist-action-btn" title="More options"><i class="fas fa-ellipsis-v"></i></button></div>`;
+            const artHTML = getPlaylistArtHTML(playlist);
+            return `
+                <div class="playlist-card" data-id="${id}">
+                    ${artHTML}
+                    <div class="playlist-card-name">${playlist.name}</div>
+                    <div class="playlist-card-count">${trackCount} track${trackCount !== 1 ? 's' : ''}</div>
+                    <button class="control-btn small playlist-action-btn" title="More options"><i class="fas fa-ellipsis-v"></i></button>
+                </div>`;
         }).join('');
     }
 
@@ -124,39 +163,78 @@ function renderSidebarPlaylists() {
     });
 }
 
-export function openPlaylistView(id) {
+export function openPlaylistView(idOrObj) {
     const playlistsList = document.getElementById('playlists-list');
     const playlistDetailView = document.getElementById('playlist-detail-view');
 
-    if (!id) {
+    if (!idOrObj) {
         playlistDetailView.classList.add('hidden');
         document.getElementById('playlists-section').classList.remove('hidden');
         playlistsList.classList.remove('hidden');
         return;
     }
-    const playlist = playlists[id];
+
+    let playlist;
+    if (typeof idOrObj === 'object') {
+        playlist = idOrObj;
+        // Ensure trackIds exist if only tracks are provided
+        if (!playlist.trackIds && playlist.tracks) {
+            // We might need to handle the case where tracks aren't in library
+            // For now, map IDs
+            playlist.trackIds = playlist.tracks.map(t => t.id);
+            // Hack: Push these tracks to a temporary context check or rely on renderDetailTrackList finding them?
+            // If renderDetailTrackList looks in library/discover, and these are new objects (History), it will fail.
+            // We'll handle this by passing the tracks directly to renderDetailTrackList if we update it, 
+            // OR we just assume they are in library for LastAdded/MostPlayed.
+            // For History, they might not be.
+            // For DiscoverMix, they are in discoverTracks (set in context).
+
+            // NOTE: I will update renderDetailTrackList signature in library-manager next to accept tracks array.
+        }
+    } else {
+        playlist = playlists[idOrObj];
+    }
+
+    // Hide Playlists Section (parent)
     document.getElementById('playlists-section').classList.add('hidden');
+
+    // Show Detail
     playlistDetailView.classList.remove('hidden');
     playlistDetailView.innerHTML = '';
 
-    const headerHTML = `<div class="playlist-detail-header"><button id="playlist-detail-back-btn" class="btn-secondary" style="padding: 10px 15px;"><i class="fas fa-arrow-left"></i> Back</button><div class="playlist-info"><h2 style="font-size: 28px; color: var(--dark-color); margin: 0;">${playlist.name}</h2><p style="color: var(--text-color); margin: 0;">${playlist.trackIds.length} track${playlist.trackIds.length !== 1 ? 's' : ''}</p></div><div class="playlist-actions" style="margin-left: auto;"><button id="playlist-play-all-btn" class="btn-primary"><i class="fas fa-play"></i> Play All</button></div></div><div class="track-list-header"><input type="checkbox" class="select-all-checkbox" title="Select all tracks"><span>#</span><span>Title</span><span>Artist</span><span>Duration</span><span title="Actions"></span></div><div id="playlist-track-list"></div>`;
+    const headerHTML = `<div class="playlist-detail-header"><button id="playlist-detail-back-btn" class="btn-secondary" style="padding: 10px 15px;"><i class="fas fa-arrow-left"></i> Back</button><div class="playlist-info"><h2 style="font-size: 28px; color: var(--dark-color); margin: 0;">${playlist.name}</h2><p style="color: var(--text-color); margin: 0;">${playlist.description || (playlist.trackIds.length + ' tracks')}</p></div><div class="playlist-actions" style="margin-left: auto;"><button id="playlist-play-all-btn" class="btn-primary"><i class="fas fa-play"></i> Play All</button></div></div><div class="track-list-header"><input type="checkbox" class="select-all-checkbox" title="Select all tracks"><span>#</span><span>Title</span><span>Artist</span><span>Duration</span><span title="Actions"></span></div><div id="playlist-track-list"></div>`;
     playlistDetailView.innerHTML = headerHTML;
 
     document.getElementById('playlist-detail-back-btn').addEventListener('click', () => {
         playlistDetailView.classList.add('hidden');
-        document.getElementById('playlists-section').classList.remove('hidden');
-        playlistsList.classList.remove('hidden');
+        if (playlist.isSystem || playlist.isVirtual) {
+            // Go back to Home if it was a system playlist from home
+            switchSection('home-section');
+        } else {
+            document.getElementById('playlists-section').classList.remove('hidden');
+            playlistsList.classList.remove('hidden');
+        }
     });
 
     document.getElementById('playlist-play-all-btn').addEventListener('click', () => {
-        if (playlist.trackIds.length > 0) {
-            if (startPlaybackFn) startPlaybackFn(playlist.trackIds, 0);
-            showMessage(`Playing all tracks from "${playlist.name}".`);
+        const tracksToPlay = playlist.tracks ? playlist.tracks.map(t => t.id) : playlist.trackIds;
+        // If we have track objects that aren't in library, startPlayback might fail if it tries to lookup ID.
+        // I should also update startPlayback to accept objects?
+        // Or ensure these tracks are in a context.
+        if (tracksToPlay.length > 0) {
+            if (startPlaybackFn) startPlaybackFn(tracksToPlay, 0);
         }
     });
 
     const trackListContainer = document.getElementById('playlist-track-list');
-    renderDetailTrackList(playlist.trackIds, trackListContainer, { isFromPlaylist: true, playlistId: id });
+    // Pass tracks if available, otherwise IDs
+    renderDetailTrackList(
+        playlist.tracks || playlist.trackIds,
+        trackListContainer,
+        { isFromPlaylist: true, playlistId: playlist.id, virtual: !!playlist.tracks }
+    );
+
+    switchSection('playlist-detail-view', playlist.id);
 }
 
 export function addTrackToPlaylist(playlistId, trackId) {
@@ -245,7 +323,7 @@ export function openAddToPlaylistModal(trackIds) {
             trackIds.forEach(tid => {
                 if (addTrackToPlaylist(playlistId, tid)) addedCount++;
             });
-            showMessage(`Added ${addedCount} track(s) to "${currentPlaylists[playlistId].name}".`);
+            // showMessage(`Added ${addedCount} track(s) to "${currentPlaylists[playlistId].name}".`);
             refresh(playlistId);
             modal.classList.add('hidden');
             clearSelection();
@@ -256,13 +334,13 @@ export function openAddToPlaylistModal(trackIds) {
     if (newBtn) {
         const newBtnClone = newBtn.cloneNode(true);
         newBtn.parentNode.replaceChild(newBtnClone, newBtn);
-        newBtnClone.onclick = () => {
-            const newName = prompt('Enter new playlist name:');
+        newBtnClone.onclick = async () => {
+            const newName = await showInputModal('New Playlist', 'Enter playlist name:', '', 'My Awesome Playlist');
             if (newName && newName.trim()) {
                 const newId = createPlaylist(newName.trim(), true);
                 if (newId) {
                     trackIds.forEach(tid => addTrackToPlaylist(newId, tid));
-                    showMessage(`Created playlist "${newName.trim()}" and added ${trackIds.length} track(s).`);
+                    // showMessage(`Created playlist "${newName.trim()}" and added ${trackIds.length} track(s).`);
                     refresh();
                     modal.classList.add('hidden');
                     clearSelection();
